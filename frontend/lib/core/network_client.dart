@@ -10,12 +10,23 @@ import 'package:nas_reader/services/app_logger.dart';
 import 'package:nas_reader/services/auth_service.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // 全局 Navigation Key，用于在 Dio 拦截器中触发 401 登出跳转
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+enum ServerConnectionPath {
+  lan,
+  tailnet,
+}
+
 class NetworkClient {
   static Dio? _dioInstance;
+  static bool _tailnetAuthorizationDialogVisible = false;
+
+  /// 最近一次成功请求实际使用的传输路径，供服务状态页面展示。
+  static final ValueNotifier<ServerConnectionPath> connectionPath =
+      ValueNotifier<ServerConnectionPath>(ServerConnectionPath.lan);
 
   /// 标记请求已经历过一次 Tailnet 重试，避免无限重放。
   static const String _tailnetRetryFlag = 'tailnetRetried';
@@ -50,7 +61,8 @@ class NetworkClient {
     final targetBaseUrl = sanitizeBaseUrl(baseUrl ?? ApiConfig.baseUrl);
 
     // 1. 如果单例已存在，且 baseUrl 没有变更，直接复用
-    if (_dioInstance != null && _dioInstance!.options.baseUrl == targetBaseUrl) {
+    if (_dioInstance != null &&
+        _dioInstance!.options.baseUrl == targetBaseUrl) {
       return _dioInstance!;
     }
 
@@ -68,20 +80,28 @@ class NetworkClient {
       InterceptorsWrapper(
         onRequest: (reqOptions, handler) async {
           // 每次请求前动态获取最新的 Token（优先使用传入的 token，次选 ApiConfig/AuthService）
-          final currentToken = token ?? ApiConfig.authToken ?? await AuthService.getToken();
+          final currentToken =
+              token ?? ApiConfig.authToken ?? await AuthService.getToken();
           if (currentToken != null && currentToken.isNotEmpty) {
             reqOptions.headers['Authorization'] = 'Bearer $currentToken';
           }
 
-          AppLogger.log('🌐 [HTTP REQUEST] ${reqOptions.method} ${reqOptions.uri}');
+          AppLogger.log(
+              '🌐 [HTTP REQUEST] ${reqOptions.method} ${reqOptions.uri}');
           return handler.next(reqOptions);
         },
         onResponse: (response, handler) {
-          AppLogger.log('✅ [HTTP ${response.statusCode}] ${response.requestOptions.uri}');
+          connectionPath.value =
+              response.requestOptions.extra[_tailnetRetryFlag] == true
+                  ? ServerConnectionPath.tailnet
+                  : ServerConnectionPath.lan;
+          AppLogger.log(
+              '✅ [HTTP ${response.statusCode}] ${response.requestOptions.uri}');
           return handler.next(response);
         },
         onError: (DioException error, handler) async {
-          AppLogger.log('❌ [HTTP ERROR ${error.response?.statusCode}] -> ${error.requestOptions.uri}');
+          AppLogger.log(
+              '❌ [HTTP ERROR ${error.response?.statusCode}] -> ${error.requestOptions.uri}');
 
           // 401 鉴权失效：重置网络单例、清理本地凭证并切回登录页
           if (error.response?.statusCode == 401) {
@@ -100,16 +120,22 @@ class NetworkClient {
           if (_isConnectionFailure(error) &&
               error.requestOptions.extra[_tailnetRetryFlag] != true) {
             final endpoints = await ServerEndpointService.load();
-            final transport = await _tailnetTransport.connect(endpoints.tailnetTarget);
-            if (transport != null) {
-              final retryOptions = error.requestOptions
-                ..baseUrl = sanitizeBaseUrl(transport.baseUrl)
-                ..extra[_tailnetRetryFlag] = true;
-              try {
-                return handler.resolve(await dio.fetch(retryOptions));
-              } on DioException catch (retryError) {
-                return handler.next(retryError);
+            try {
+              final transport =
+                  await _tailnetTransport.connect(endpoints.tailnetTarget);
+              if (transport != null) {
+                final retryOptions = error.requestOptions
+                  ..baseUrl = sanitizeBaseUrl(transport.baseUrl)
+                  ..extra[_tailnetRetryFlag] = true;
+                try {
+                  return handler.resolve(await dio.fetch(retryOptions));
+                } on DioException catch (retryError) {
+                  return handler.next(retryError);
+                }
               }
+            } on TailnetAuthorizationRequired catch (auth) {
+              AppLogger.log('⚠️ Tailnet 需要授权: ${auth.status.authUrl}');
+              _showTailnetAuthorization(auth.status.authUrl!);
             }
           }
           return handler.next(error);
@@ -125,12 +151,14 @@ class NetworkClient {
   static void reset() {
     _dioInstance?.close(force: true);
     _dioInstance = null;
+    connectionPath.value = ServerConnectionPath.lan;
   }
 
   /// 服务器地址变更时原地改写 baseUrl，让已经持有该实例的页面立即用上新地址。
   static void updateBaseUrl(String baseUrl) {
     final cleaned = sanitizeBaseUrl(baseUrl);
-    if (_dioInstance == null || _dioInstance!.options.baseUrl == cleaned) return;
+    if (_dioInstance == null || _dioInstance!.options.baseUrl == cleaned)
+      return;
     _dioInstance!.options.baseUrl = cleaned;
     AppLogger.log('🔁 [HTTP] baseUrl 已更新为 $cleaned');
   }
@@ -142,6 +170,40 @@ class NetworkClient {
 
   static void resetTailnetTransportForTesting() {
     _tailnetTransport = const TailnetTransportService();
+  }
+
+  static void _showTailnetAuthorization(String authUrl) {
+    if (_tailnetAuthorizationDialogVisible) return;
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    _tailnetAuthorizationDialogVisible = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('需要连接 Tailnet'),
+        content: const Text('请在浏览器中完成 Tailscale 授权，然后返回应用重试。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final uri = Uri.tryParse(authUrl);
+              if (uri != null) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+            },
+            child: const Text('去授权'),
+          ),
+        ],
+      ),
+    ).whenComplete(() => _tailnetAuthorizationDialogVisible = false);
   }
 }
 

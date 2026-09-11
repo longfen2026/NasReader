@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nas_reader/config/api_config.dart';
 import 'package:nas_reader/config/theme_manager.dart';
 import 'package:nas_reader/core/network_client.dart';
+import 'package:nas_reader/services/tailnet_transport_service.dart';
 
 // 引入本地书架与 NAS 文件浏览器页面
 import 'pages/login_page.dart';
@@ -14,8 +15,37 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    _showFirstTailnetAuthorizationHint();
+  }
+
+  Future<void> _showFirstTailnetAuthorizationHint() async {
+    final hasCompletedAuthorization =
+        await const TailnetTransportService().hasCompletedAuthorization();
+    if (hasCompletedAuthorization || !mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = navigatorKey.currentContext;
+      if (context == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请到设置-账号中心进行首次 Tailscale 登录授权。'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

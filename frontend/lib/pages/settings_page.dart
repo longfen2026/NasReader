@@ -9,6 +9,7 @@ import 'package:nas_reader/services/auth_service.dart';
 import 'package:nas_reader/services/favorite_service.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
 import 'package:nas_reader/services/server_profile_service.dart';
+import 'package:nas_reader/services/tailnet_transport_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -589,19 +590,130 @@ class AccountCenterPage extends StatefulWidget {
   State<AccountCenterPage> createState() => _AccountCenterPageState();
 }
 
-class _AccountCenterPageState extends State<AccountCenterPage> {
+class _AccountCenterPageState extends State<AccountCenterPage>
+    with WidgetsBindingObserver {
   ServerEndpoints _endpoints = const ServerEndpoints();
+  final TailnetTransportService _tailnetTransport =
+      const TailnetTransportService();
+  TailnetStatus? _tailnetStatus;
+  bool _isLoadingTailnetStatus = true;
+  bool _isStartingTailnetAuthorization = false;
+  bool _isLoggingOutTailnet = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadEndpoints();
+    _loadTailnetStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadTailnetStatus();
   }
 
   Future<void> _loadEndpoints() async {
     final endpoints = await ServerEndpointService.load();
     if (!mounted) return;
     setState(() => _endpoints = endpoints);
+  }
+
+  Future<void> _loadTailnetStatus() async {
+    final status = await _tailnetTransport.status();
+    if (!mounted) return;
+    setState(() {
+      _tailnetStatus = status;
+      _isLoadingTailnetStatus = false;
+    });
+  }
+
+  Future<void> _startTailnetAuthorization() async {
+    setState(() => _isStartingTailnetAuthorization = true);
+    final status = await _tailnetTransport.beginAuthorization();
+    if (!mounted) return;
+
+    setState(() {
+      _tailnetStatus = status;
+      _isLoadingTailnetStatus = false;
+      _isStartingTailnetAuthorization = false;
+    });
+
+    final authUrl = status?.authUrl;
+    if (authUrl == null || authUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(status?.isAuthorized == true
+                ? 'Tailscale 已授权'
+                : '未能获取授权链接，请稍后重试')),
+      );
+      return;
+    }
+
+    final opened = await launchUrl(
+      Uri.parse(authUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开浏览器，请稍后重试')),
+      );
+    }
+  }
+
+  Future<void> _logoutTailnet() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('注销 Tailnet 授权'),
+        content: const Text('注销后，应用将无法通过 Tailnet 访问服务器，直到再次授权登录。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('注销', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isLoggingOutTailnet = true);
+    final loggedOut = await _tailnetTransport.logout();
+    if (!mounted) return;
+
+    if (!loggedOut) {
+      setState(() => _isLoggingOutTailnet = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tailnet 注销失败，请稍后重试')),
+      );
+      return;
+    }
+
+    final lanReachable = await ServerEndpointService.probe(_endpoints.primary);
+    if (!mounted) return;
+    if (!lanReachable) {
+      await _performLogout(context);
+      return;
+    }
+
+    NetworkClient.connectionPath.value = ServerConnectionPath.lan;
+    setState(() {
+      _tailnetStatus = const TailnetStatus(backendState: 'NeedsLogin');
+      _isLoggingOutTailnet = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已注销 Tailnet 授权，当前使用局域网直连')),
+    );
   }
 
   Future<void> _handleLogout(BuildContext context) async {
@@ -767,17 +879,40 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
             ),
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.cloud_outlined,
-                      color: Colors.blueAccent),
-                  title: const Text('局域网服务器', style: TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                    ApiConfig.baseUrl.isNotEmpty ? ApiConfig.baseUrl : '未配置',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: const Text('直连',
-                      style:
-                          TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ValueListenableBuilder<ServerConnectionPath>(
+                  valueListenable: NetworkClient.connectionPath,
+                  builder: (context, path, _) {
+                    final isTailnet = path == ServerConnectionPath.tailnet;
+                    final target = _endpoints.hasTailnetTarget
+                        ? _endpoints.tailnetTarget
+                        : '未配置';
+                    return ListTile(
+                      leading: Icon(
+                        isTailnet ? Icons.hub_outlined : Icons.cloud_outlined,
+                        color: isTailnet ? Colors.teal : Colors.blueAccent,
+                      ),
+                      title: Text(
+                        isTailnet ? 'Tailnet 服务器' : '局域网服务器',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        isTailnet
+                            ? target
+                            : ApiConfig.baseUrl.isNotEmpty
+                                ? ApiConfig.baseUrl
+                                : '未配置',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Text(
+                        isTailnet ? 'Tailnet' : '直连',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isTailnet ? Colors.teal : null,
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -807,6 +942,56 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                           : Colors.redAccent,
                     ),
                   ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(
+                    Icons.vpn_key_outlined,
+                    color: _tailnetStatus?.isAuthorized == true
+                        ? Colors.green
+                        : Colors.orange,
+                  ),
+                  title: const Text('Tailscale 授权',
+                      style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    _isLoadingTailnetStatus
+                        ? '正在读取授权状态'
+                        : _tailnetStatus?.isAuthorized == true
+                            ? '已授权，可在局域网直连失败时使用 Tailnet'
+                            : '未授权、已过期或即将过期，请重新登录授权',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: _isLoadingTailnetStatus
+                      ? null
+                      : _tailnetStatus?.isAuthorized == true
+                          ? FilledButton.tonal(
+                              onPressed:
+                                  _isLoggingOutTailnet ? null : _logoutTailnet,
+                              style: FilledButton.styleFrom(
+                                foregroundColor: Colors.redAccent,
+                              ),
+                              child: _isLoggingOutTailnet
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Text('注销'),
+                            )
+                          : FilledButton.tonal(
+                              onPressed: _isStartingTailnetAuthorization
+                                  ? null
+                                  : _startTailnetAuthorization,
+                              child: _isStartingTailnetAuthorization
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Text('授权登录'),
+                            ),
                 ),
               ],
             ),
@@ -978,7 +1163,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
                       decoration: const InputDecoration(
                         labelText: 'Tailnet 目标（可选）',
                         helperText:
-                            '局域网连接失败时通过 Tailnet 访问，例如 nas.example.ts.net:6088',
+                            '局域网连接失败时通过 Tailnet 访问\n例如 nas.example.ts.net:6088',
                         prefixIcon: Icon(Icons.vpn_lock_outlined),
                         border: OutlineInputBorder(),
                       ),

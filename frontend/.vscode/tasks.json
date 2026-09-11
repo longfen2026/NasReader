@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Verify Flutter Tailnet Android integration",
+			"type": "shell",
+			"command": "C:\\Users\\lijil\\Documents\\SDKs\\flutter\\bin\\flutter.bat",
+			"args": [
+				"analyze"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

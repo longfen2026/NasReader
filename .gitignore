@@ -10,3 +10,7 @@ frontend/android/local.properties
 # 运行时数据与本地配置
 backend/data/
 .env
+.DS_Store
+
+# Go Mobile generated Android archive
+third_party/tailnet_android/*.aar

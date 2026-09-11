@@ -45,6 +45,35 @@ class _FakeTailnetTransport implements TailnetTransport {
     requestedTargets.add(target);
     return result;
   }
+
+  @override
+  Future<TailnetStatus?> status() async => null;
+
+  Future<TailnetStatus?> beginAuthorization() async => null;
+
+  Future<bool> hasCompletedAuthorization() async => false;
+}
+
+class _AuthorizationRequiredTransport implements TailnetTransport {
+  final List<String> requestedTargets = <String>[];
+
+  @override
+  Future<TailnetTransportResult?> connect(String target) async {
+    requestedTargets.add(target);
+    throw const TailnetAuthorizationRequired(
+      TailnetStatus(
+        backendState: 'NeedsLogin',
+        authUrl: 'https://login.tailscale.com/a/example',
+      ),
+    );
+  }
+
+  @override
+  Future<TailnetStatus?> status() async => null;
+
+  Future<TailnetStatus?> beginAuthorization() async => null;
+
+  Future<bool> hasCompletedAuthorization() async => false;
 }
 
 void main() {
@@ -65,6 +94,24 @@ void main() {
   tearDown(() {
     NetworkClient.reset();
     NetworkClient.resetTailnetTransportForTesting();
+  });
+
+  test('仅运行状态代表 Tailnet 已授权', () {
+    expect(
+      const TailnetStatus(backendState: 'Running').isAuthorized,
+      isTrue,
+    );
+    expect(
+      const TailnetStatus(backendState: 'NeedsLogin').isAuthorized,
+      isFalse,
+    );
+    expect(
+      const TailnetStatus(
+        backendState: 'Running',
+        authUrl: 'https://login.tailscale.com/a/example',
+      ).isAuthorized,
+      isFalse,
+    );
   });
 
   test('连接失败时仅重放一次到 Tailnet loopback，逻辑地址保持不变', () async {
@@ -89,6 +136,7 @@ void main() {
       ],
     );
     expect(dio.options.baseUrl, lanUrl);
+    expect(NetworkClient.connectionPath.value, ServerConnectionPath.tailnet);
   });
 
   test('Tailnet 重试失败后不会再次尝试传输', () async {
@@ -105,5 +153,19 @@ void main() {
 
     expect(transport.requestedTargets, <String>[tailnetTarget]);
     expect(adapter.requestedUrls, hasLength(2));
+  });
+
+  test('Tailnet 等待授权时保留原始局域网失败且不重放请求', () async {
+    final adapter = _TailnetAdapter();
+    final transport = _AuthorizationRequiredTransport();
+    NetworkClient.setTailnetTransportForTesting(transport);
+
+    final dio = NetworkClient.getDio(baseUrl: lanUrl);
+    dio.httpClientAdapter = adapter;
+
+    await expectLater(dio.get('/api/v1/files'), throwsA(isA<DioException>()));
+
+    expect(transport.requestedTargets, <String>[tailnetTarget]);
+    expect(adapter.requestedUrls, <String>['$lanUrl/api/v1/files']);
   });
 }

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:nas_reader/config/api_config.dart';
 import 'package:nas_reader/core/network_client.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 import '../main_navigation_container.dart';
 import '../services/progress_sync_service.dart';
 import '../services/server_endpoint_service.dart';
 import '../services/server_profile_service.dart';
+import '../services/tailnet_transport_service.dart';
 
 // --- 登录 / 注册统一页面 ---
 class LoginPage extends StatefulWidget {
@@ -17,7 +19,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _serverController = TextEditingController(text: ApiConfig.baseUrl);
   final _tailnetTargetController = TextEditingController();
@@ -27,15 +29,29 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isRegisterMode = false;
   bool _isLoading = false;
+  bool _isLoadingTailnetStatus = true;
+  bool _isStartingTailnetAuthorization = false;
   String? _errorMessage;
+  TailnetStatus? _tailnetStatus;
 
   List<ServerProfile> _profiles = const [];
   bool _rememberPassword = true;
+  final TailnetTransportService _tailnetTransport =
+      const TailnetTransportService();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSavedServerUrl();
+    _loadTailnetStatus();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadTailnetStatus();
+    }
   }
 
   /// 默认选中最近使用过的地址，并回填该地址上次的登录信息
@@ -49,7 +65,9 @@ class _LoginPageState extends State<LoginPage> {
         : profiles.isNotEmpty
             ? profiles.first.url
             : ServerProfileService.normalizeUrl(
-                (savedUrl != null && savedUrl.isNotEmpty) ? savedUrl : ApiConfig.baseUrl,
+                (savedUrl != null && savedUrl.isNotEmpty)
+                    ? savedUrl
+                    : ApiConfig.baseUrl,
               );
 
     if (!mounted) return;
@@ -80,8 +98,9 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    final password =
-        profile.rememberPassword ? await ServerProfileService.readPassword(normalized) : '';
+    final password = profile.rememberPassword
+        ? await ServerProfileService.readPassword(normalized)
+        : '';
 
     if (!mounted) return;
     setState(() {
@@ -106,8 +125,51 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _profiles = profiles);
   }
 
+  Future<void> _loadTailnetStatus() async {
+    final status = await _tailnetTransport.status();
+    if (!mounted) return;
+    setState(() {
+      _tailnetStatus = status;
+      _isLoadingTailnetStatus = false;
+    });
+  }
+
+  Future<void> _startTailnetAuthorization() async {
+    setState(() {
+      _isStartingTailnetAuthorization = true;
+      _errorMessage = null;
+    });
+    final status = await _tailnetTransport.beginAuthorization();
+    if (!mounted) return;
+
+    setState(() {
+      _tailnetStatus = status;
+      _isLoadingTailnetStatus = false;
+      _isStartingTailnetAuthorization = false;
+    });
+
+    final authUrl = status?.authUrl;
+    if (authUrl == null || authUrl.isEmpty) {
+      setState(() {
+        _errorMessage = status?.isAuthorized == true
+            ? 'Tailscale 已授权，可使用 Tailnet 登录'
+            : '未能获取 Tailscale 授权链接，请稍后重试';
+      });
+      return;
+    }
+
+    final opened = await launchUrl(
+      Uri.parse(authUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      setState(() => _errorMessage = '无法打开浏览器，请稍后重试');
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _serverController.dispose();
     _tailnetTargetController.dispose();
     _usernameController.dispose();
@@ -124,7 +186,8 @@ class _LoginPageState extends State<LoginPage> {
       _errorMessage = null;
     });
 
-    final primaryUrl = ServerProfileService.normalizeUrl(_serverController.text);
+    final primaryUrl =
+        ServerProfileService.normalizeUrl(_serverController.text);
     final tailnetTarget = ServerEndpointService.normalizeTailnetTarget(
       _tailnetTargetController.text,
     );
@@ -143,7 +206,8 @@ class _LoginPageState extends State<LoginPage> {
       await AuthService.saveBaseUrl(primaryUrl);
 
       final dio = NetworkClient.getDio(baseUrl: primaryUrl);
-      final path = _isRegisterMode ? '/api/v1/auth/register' : '/api/v1/auth/login';
+      final path =
+          _isRegisterMode ? '/api/v1/auth/register' : '/api/v1/auth/login';
 
       final response = await dio.post(
         path,
@@ -156,9 +220,10 @@ class _LoginPageState extends State<LoginPage> {
 
       final data = response.data;
       final token = (data['token'] ?? data['data']?['token'] ?? '') as String;
-      
+
       // 3. 解析用户信息（安全类型转换，避免 as int 崩溃）
-      final rawUser = (data['user'] ?? data['data']?['user']) as Map<String, dynamic>?;
+      final rawUser =
+          (data['user'] ?? data['data']?['user']) as Map<String, dynamic>?;
 
       final fallbackId =
           (data['userId'] ?? data['user_id'] ?? data['id'] ?? '').toString();
@@ -271,12 +336,15 @@ class _LoginPageState extends State<LoginPage> {
                                         children: [
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   p.url,
-                                                  style: const TextStyle(fontSize: 13),
-                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                      fontSize: 13),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                                 if (p.username.isNotEmpty)
                                                   Text(
@@ -290,7 +358,8 @@ class _LoginPageState extends State<LoginPage> {
                                             ),
                                           ),
                                           IconButton(
-                                            icon: const Icon(Icons.close, size: 16),
+                                            icon: const Icon(Icons.close,
+                                                size: 16),
                                             tooltip: '删除该记录',
                                             onPressed: () {
                                               Navigator.pop(ctx);
@@ -312,12 +381,49 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _tailnetTargetController,
                     decoration: const InputDecoration(
                       labelText: 'Tailnet 目标（可选）',
-                      helperText: '局域网连接失败时通过 Tailnet 访问，例如 nas.example.ts.net:6088',
+                      helperText:
+                          '局域网连接失败时通过 Tailnet 访问\n例如 nas.example.ts.net:6088',
                       prefixIcon: Icon(Icons.vpn_lock_outlined),
                       border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.vpn_key_outlined,
+                      color: _tailnetStatus?.isAuthorized == true
+                          ? Colors.green
+                          : Colors.orange,
+                    ),
+                    title: const Text('Tailscale 授权',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: Text(
+                      _isLoadingTailnetStatus
+                          ? '正在读取授权状态'
+                          : _tailnetStatus?.isAuthorized == true
+                              ? '已授权，可在局域网不可达时通过 Tailnet 登录'
+                              : '非局域网登录前，请先完成 Tailnet 授权',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    trailing: _isLoadingTailnetStatus ||
+                            _tailnetStatus?.isAuthorized == true
+                        ? null
+                        : FilledButton.tonal(
+                            onPressed: _isStartingTailnetAuthorization
+                                ? null
+                                : _startTailnetAuthorization,
+                            child: _isStartingTailnetAuthorization
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Text('授权登录'),
+                          ),
+                  ),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
@@ -325,8 +431,9 @@ class _LoginPageState extends State<LoginPage> {
                       prefixIcon: Icon(Icons.person_outline),
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) =>
-                        (v == null || v.trim().length < 3) ? '用户名至少 3 个字符' : null,
+                    validator: (v) => (v == null || v.trim().length < 3)
+                        ? '用户名至少 3 个字符'
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
@@ -414,9 +521,7 @@ class _LoginPageState extends State<LoginPage> {
                       });
                     },
                     child: Text(
-                      _isRegisterMode
-                          ? '已有账号？返回登录'
-                          : '没有账号？点击注册新用户',
+                      _isRegisterMode ? '已有账号？返回登录' : '没有账号？点击注册新用户',
                       style: const TextStyle(color: Color(0xFF382E25)),
                     ),
                   ),

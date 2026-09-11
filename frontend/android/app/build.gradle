@@ -49,6 +49,10 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -63,6 +67,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix ".test"
+        }
+
         release {
             if (System.getenv("KEYSTORE_PATH") != null) {
                 signingConfig = signingConfigs.release
@@ -82,4 +90,5 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    implementation files("../../../third_party/tailnet_android/tailnetandroid.aar")
 }
