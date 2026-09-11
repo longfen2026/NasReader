@@ -8,7 +8,8 @@ import 'package:nas_reader/main_navigation_container.dart';
 import 'package:nas_reader/pages/login_page.dart';
 import 'package:nas_reader/services/app_logger.dart';
 import 'package:nas_reader/services/auth_service.dart';
-import 'package:nas_reader/services/server_failover_service.dart';
+import 'package:nas_reader/services/server_endpoint_service.dart';
+import 'package:nas_reader/services/tailnet_transport_service.dart';
 
 // 全局 Navigation Key，用于在 Dio 拦截器中触发 401 登出跳转
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -16,10 +17,11 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 class NetworkClient {
   static Dio? _dioInstance;
 
-  /// 标记请求已经历过一次主备切换重试，避免无限重放
-  static const String _failoverRetryFlag = 'failoverRetried';
+  /// 标记请求已经历过一次 Tailnet 重试，避免无限重放。
+  static const String _tailnetRetryFlag = 'tailnetRetried';
+  static TailnetTransport _tailnetTransport = const TailnetTransportService();
 
-  /// 仅连接层失败才触发主备切换；服务端返回了响应说明链路通畅
+  /// 仅连接层失败才触发 Tailnet 回退；服务端返回了响应说明链路通畅。
   static bool _isConnectionFailure(DioException error) {
     if (error.response != null) return false;
     return error.type == DioExceptionType.connectionError ||
@@ -94,14 +96,15 @@ class NetworkClient {
             return handler.next(error);
           }
 
-          // 连接层失败：探测主备并在切换成功后重放本次请求
+          // 局域网直连失败后，原生层会把 Tailnet 连接转为本机 TCP 转发。
           if (_isConnectionFailure(error) &&
-              error.requestOptions.extra[_failoverRetryFlag] != true) {
-            final pick = await ServerFailoverService.ensureAvailable(force: true);
-            if (pick != null) {
+              error.requestOptions.extra[_tailnetRetryFlag] != true) {
+            final endpoints = await ServerEndpointService.load();
+            final transport = await _tailnetTransport.connect(endpoints.tailnetTarget);
+            if (transport != null) {
               final retryOptions = error.requestOptions
-                ..baseUrl = sanitizeBaseUrl(pick.url)
-                ..extra[_failoverRetryFlag] = true;
+                ..baseUrl = sanitizeBaseUrl(transport.baseUrl)
+                ..extra[_tailnetRetryFlag] = true;
               try {
                 return handler.resolve(await dio.fetch(retryOptions));
               } on DioException catch (retryError) {
@@ -124,12 +127,21 @@ class NetworkClient {
     _dioInstance = null;
   }
 
-  /// 主备切换时原地改写 baseUrl，让已经持有该实例的页面立即用上新地址
+  /// 服务器地址变更时原地改写 baseUrl，让已经持有该实例的页面立即用上新地址。
   static void updateBaseUrl(String baseUrl) {
     final cleaned = sanitizeBaseUrl(baseUrl);
     if (_dioInstance == null || _dioInstance!.options.baseUrl == cleaned) return;
     _dioInstance!.options.baseUrl = cleaned;
     AppLogger.log('🔁 [HTTP] baseUrl 已更新为 $cleaned');
+  }
+
+  /// 仅用于单元测试替换原生 Tailnet 调用。
+  static void setTailnetTransportForTesting(TailnetTransport transport) {
+    _tailnetTransport = transport;
+  }
+
+  static void resetTailnetTransportForTesting() {
+    _tailnetTransport = const TailnetTransportService();
   }
 }
 

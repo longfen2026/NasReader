@@ -32,7 +32,8 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => SettingsPageState();
 }
 
-class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver {
+class SettingsPageState extends State<SettingsPage>
+    with WidgetsBindingObserver {
   String _cacheSizeStr = '计算中...';
   bool _isClearing = false;
   bool _isCalculating = false;
@@ -51,7 +52,9 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
 
     final now = DateTime.now();
     final last = _lastSecretTap;
-    _secretTaps = (last == null || now.difference(last) > _unlockTapGap) ? 1 : _secretTaps + 1;
+    _secretTaps = (last == null || now.difference(last) > _unlockTapGap)
+        ? 1
+        : _secretTaps + 1;
     _lastSecretTap = now;
 
     if (_secretTaps < _unlockTapCount) return;
@@ -277,14 +280,16 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
             ),
             if (result.releaseNotes.isNotEmpty) ...[
               const SizedBox(height: 12),
-              const Text('更新说明：', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              const Text('更新说明：',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 160),
                 child: SingleChildScrollView(
                   child: Text(
                     result.releaseNotes,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.grey.shade700, height: 1.4),
                   ),
                 ),
               ),
@@ -353,24 +358,28 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
               style: TextStyle(fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 12),
-            const Text('核心功能：', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            const Text('核心功能：',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(
               '• 支持 TXT 高速排版引擎、EPUB 精准重排与 PDF 原生渲染\n'
               '• 挂载 NAS 物理存储目录，支持即点即读与离线缓存\n'
               '• 基于 LWW 策略的云端进度与书签跨设备毫秒级同步\n'
               '• 原生跟手滑动翻页与手势热区定制',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+              style: TextStyle(
+                  fontSize: 12, color: Colors.grey.shade700, height: 1.4),
             ),
             const SizedBox(height: 12),
             const Divider(),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('版本', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('版本',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 Text(
                   _versionStr.isEmpty ? '读取中...' : _versionStr,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -411,7 +420,9 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
             // 1. 账号中心入口
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('账号与服务', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              child: Text('账号与服务',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.grey)),
             ),
             ListTile(
               leading: CircleAvatar(
@@ -421,13 +432,18 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
                   (user?.username.isNotEmpty ?? false)
                       ? user!.username[0].toUpperCase()
                       : 'U',
-                  style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold),
                 ),
               ),
               title: const Text('账号中心'),
               subtitle: Text(
                 ApiConfig.isLoggedIn
-                    ? (user?.nickname?.isNotEmpty == true ? user!.nickname! : (user?.username ?? '已登录'))
+                    ? (user?.nickname?.isNotEmpty == true
+                        ? user!.nickname!
+                        : (user?.username ?? '已登录'))
                     : '未登录',
                 style: const TextStyle(fontSize: 12),
               ),
@@ -446,7 +462,9 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
             // 2. 外观与主题（直接与 ThemeManager.themeModeNotifier 联动）
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('外观与主题', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              child: Text('外观与主题',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.grey)),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -488,7 +506,9 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
               onTap: _handleSecretTap,
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('存储与诊断', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                child: Text('存储与诊断',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.grey)),
               ),
             ),
             ListTile(
@@ -528,7 +548,9 @@ class SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver 
             // 4. 关于
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('系统信息', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              child: Text('系统信息',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.grey)),
             ),
             ListTile(
               leading: const Icon(Icons.info_outline),
@@ -627,7 +649,8 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 150),
-        pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LoginPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -675,8 +698,12 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
         children: [
           Card(
             elevation: 0,
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.4),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Row(
@@ -688,7 +715,10 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                       (user?.username.isNotEmpty ?? false)
                           ? user!.username[0].toUpperCase()
                           : 'U',
-                      style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 24,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -700,17 +730,20 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                           user?.nickname?.isNotEmpty == true
                               ? user!.nickname!
                               : (user?.username ?? '未登录'),
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '用户 ID: ${user?.id ?? "未知"}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade600),
                         ),
                         if (user?.email != null && user!.email!.isNotEmpty)
                           Text(
                             user.email!,
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade600),
                           ),
                       ],
                     ),
@@ -720,7 +753,11 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text('服务状态', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const Text('服务状态',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey)),
           const SizedBox(height: 8),
           Card(
             elevation: 0,
@@ -731,31 +768,25 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
             child: Column(
               children: [
                 ListTile(
-                  leading: Icon(
-                    _endpoints.usingBackup ? Icons.backup_outlined : Icons.cloud_outlined,
-                    color: _endpoints.usingBackup ? Colors.orange : Colors.blueAccent,
-                  ),
-                  title: const Text('当前生效服务器', style: TextStyle(fontSize: 14)),
+                  leading: const Icon(Icons.cloud_outlined,
+                      color: Colors.blueAccent),
+                  title: const Text('局域网服务器', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     ApiConfig.baseUrl.isNotEmpty ? ApiConfig.baseUrl : '未配置',
                     style: const TextStyle(fontSize: 12),
                   ),
-                  trailing: Text(
-                    _endpoints.usingBackup ? '备用' : '主服务',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: _endpoints.usingBackup ? Colors.orange : Colors.blueAccent,
-                    ),
-                  ),
+                  trailing: const Text('直连',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.dns_outlined, color: Color(0xFF5A4A3A)),
+                  leading:
+                      const Icon(Icons.dns_outlined, color: Color(0xFF5A4A3A)),
                   title: const Text('服务器地址配置', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
-                    '主：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
-                    '备用：${_endpoints.hasBackup ? _endpoints.backup : "未配置"}',
+                    '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
+                    'Tailnet：${_endpoints.hasTailnetTarget ? _endpoints.tailnetTarget : "未配置"}',
                     style: const TextStyle(fontSize: 12),
                   ),
                   trailing: const Icon(Icons.chevron_right),
@@ -763,14 +794,17 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.sync_lock_outlined, color: Colors.green),
+                  leading:
+                      const Icon(Icons.sync_lock_outlined, color: Colors.green),
                   title: const Text('多端同步状态', style: TextStyle(fontSize: 14)),
                   trailing: Text(
                     ApiConfig.isLoggedIn ? '已连接' : '未授权',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: ApiConfig.isLoggedIn ? Colors.green : Colors.redAccent,
+                      color: ApiConfig.isLoggedIn
+                          ? Colors.green
+                          : Colors.redAccent,
                     ),
                   ),
                 ),
@@ -778,7 +812,11 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text('安全设置', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const Text('安全设置',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey)),
           const SizedBox(height: 8),
           Card(
             elevation: 0,
@@ -787,12 +825,16 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
               side: BorderSide(color: Colors.grey.shade300),
             ),
             child: ListTile(
-              leading: const Icon(Icons.password_outlined, color: Color(0xFF5A4A3A)),
+              leading:
+                  const Icon(Icons.password_outlined, color: Color(0xFF5A4A3A)),
               title: const Text('修改登录密码', style: TextStyle(fontSize: 14)),
-              subtitle: const Text('修改成功后需重新登录', style: TextStyle(fontSize: 12)),
+              subtitle:
+                  const Text('修改成功后需重新登录', style: TextStyle(fontSize: 12)),
               trailing: const Icon(Icons.chevron_right),
               enabled: ApiConfig.isLoggedIn,
-              onTap: ApiConfig.isLoggedIn ? () => _openChangePassword(context) : null,
+              onTap: ApiConfig.isLoggedIn
+                  ? () => _openChangePassword(context)
+                  : null,
             ),
           ),
           const SizedBox(height: 32),
@@ -803,7 +845,8 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
               backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
             ),
             onPressed: () => _handleLogout(context),
-            child: const Text('退出登录', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('退出登录',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -811,18 +854,19 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
   }
 }
 
-/// 主/备服务器地址编辑页：保存时重新探测并切换生效地址
+/// 局域网服务器及可选 Tailnet 目标编辑页。
 class ServerEndpointEditorPage extends StatefulWidget {
   const ServerEndpointEditorPage({super.key});
 
   @override
-  State<ServerEndpointEditorPage> createState() => _ServerEndpointEditorPageState();
+  State<ServerEndpointEditorPage> createState() =>
+      _ServerEndpointEditorPageState();
 }
 
 class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
   final _formKey = GlobalKey<FormState>();
   final _primaryController = TextEditingController();
-  final _backupController = TextEditingController();
+  final _tailnetTargetController = TextEditingController();
 
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -840,7 +884,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
     setState(() {
       _primaryController.text =
           endpoints.primary.isNotEmpty ? endpoints.primary : ApiConfig.baseUrl;
-      _backupController.text = endpoints.backup;
+      _tailnetTargetController.text = endpoints.tailnetTarget;
       _isLoading = false;
     });
   }
@@ -848,7 +892,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
   @override
   void dispose() {
     _primaryController.dispose();
-    _backupController.dispose();
+    _tailnetTargetController.dispose();
     super.dispose();
   }
 
@@ -861,40 +905,25 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
     });
 
     final primary = ServerProfileService.normalizeUrl(_primaryController.text);
-    final backup = ServerProfileService.normalizeUrl(_backupController.text);
+    final tailnetTarget = ServerEndpointService.normalizeTailnetTarget(
+      _tailnetTargetController.text,
+    );
 
     try {
-      final pick = await ServerEndpointService.pickAvailable(
-        primary: primary,
-        backup: backup,
-      );
-
-      if (pick == null) {
-        setState(() {
-          _errorMessage = backup.isEmpty
-              ? '主服务器无法连接，请检查地址'
-              : '主服务器与备用服务器均无法连接';
-        });
-        return;
-      }
-
       await ServerEndpointService.save(
         primary: primary,
-        backup: backup,
-        usingBackup: pick.usingBackup,
+        tailnetTarget: tailnetTarget,
       );
 
       // 地址变更后必须重建 Dio，否则旧 baseUrl 会被单例继续复用
       NetworkClient.reset();
-      await ApiConfig.setBaseUrl(pick.url);
-      await AuthService.saveBaseUrl(pick.url);
+      await ApiConfig.setBaseUrl(primary);
+      await AuthService.saveBaseUrl(primary);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            pick.usingBackup ? '主服务器不可用，已切换到备用服务器' : '已切换到主服务器',
-          ),
+          content: const Text('服务器地址已保存'),
         ),
       );
       Navigator.pop(context, true);
@@ -937,7 +966,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
                       controller: _primaryController,
                       keyboardType: TextInputType.url,
                       decoration: const InputDecoration(
-                        labelText: '主服务地址',
+                        labelText: '局域网服务器地址',
                         prefixIcon: Icon(Icons.dns_outlined),
                         border: OutlineInputBorder(),
                       ),
@@ -945,15 +974,14 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _backupController,
-                      keyboardType: TextInputType.url,
+                      controller: _tailnetTargetController,
                       decoration: const InputDecoration(
-                        labelText: '备用服务地址（可选）',
-                        helperText: '主服务器不可用时自动尝试此地址',
-                        prefixIcon: Icon(Icons.backup_outlined),
+                        labelText: 'Tailnet 目标（可选）',
+                        helperText:
+                            '局域网连接失败时通过 Tailnet 访问，例如 nas.example.ts.net:6088',
+                        prefixIcon: Icon(Icons.vpn_lock_outlined),
                         border: OutlineInputBorder(),
                       ),
-                      validator: (v) => _validateUrl(v, required: false),
                     ),
                     if (_errorMessage != null) ...[
                       const SizedBox(height: 12),
@@ -1074,7 +1102,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                   prefixIcon: Icon(Icons.lock_outline),
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => (v == null || v.length < 6) ? '请输入当前密码' : null,
+                validator: (v) =>
+                    (v == null || v.length < 6) ? '请输入当前密码' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -1101,7 +1130,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                   prefixIcon: Icon(Icons.check_circle_outline),
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => v != _newController.text ? '两次输入的新密码不一致' : null,
+                validator: (v) =>
+                    v != _newController.text ? '两次输入的新密码不一致' : null,
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: 16),
@@ -1122,7 +1152,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                     ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       )
                     : const Text('确认修改', style: TextStyle(fontSize: 16)),
               ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:nas_reader/config/api_config.dart';
 import 'package:nas_reader/config/theme_manager.dart';
 import 'package:nas_reader/core/network_client.dart';
-import 'package:nas_reader/services/server_failover_service.dart';
 
 // 引入本地书架与 NAS 文件浏览器页面
 import 'pages/login_page.dart';
@@ -12,7 +11,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.init();
   await ThemeManager.init(); // 👈 初始化主题配置
-  await ServerFailoverService.ensureAvailable(force: true);
   runApp(const MyApp());
 }
 

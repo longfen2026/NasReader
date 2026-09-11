@@ -20,7 +20,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _serverController = TextEditingController(text: ApiConfig.baseUrl);
-  final _backupServerController = TextEditingController();
+  final _tailnetTargetController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _inviteCodeController = TextEditingController();
@@ -31,9 +31,6 @@ class _LoginPageState extends State<LoginPage> {
 
   List<ServerProfile> _profiles = const [];
   bool _rememberPassword = true;
-
-  /// 是否展开备用服务器输入框
-  bool _showBackupField = false;
 
   @override
   void initState() {
@@ -59,8 +56,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() {
       _profiles = profiles;
       _serverController.text = initialUrl;
-      _backupServerController.text = endpoints.backup;
-      _showBackupField = endpoints.backup.isNotEmpty;
+      _tailnetTargetController.text = endpoints.tailnetTarget;
     });
 
     await _fillCredentials(initialUrl);
@@ -92,10 +88,6 @@ class _LoginPageState extends State<LoginPage> {
       _usernameController.text = profile.username;
       _passwordController.text = password;
       _rememberPassword = profile.rememberPassword;
-      if (profile.backupUrl.isNotEmpty) {
-        _backupServerController.text = profile.backupUrl;
-        _showBackupField = true;
-      }
     });
   }
 
@@ -117,7 +109,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     _serverController.dispose();
-    _backupServerController.dispose();
+    _tailnetTargetController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _inviteCodeController.dispose();
@@ -133,41 +125,24 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     final primaryUrl = ServerProfileService.normalizeUrl(_serverController.text);
-    final backupUrl = _showBackupField
-        ? ServerProfileService.normalizeUrl(_backupServerController.text)
-        : '';
+    final tailnetTarget = ServerEndpointService.normalizeTailnetTarget(
+      _tailnetTargetController.text,
+    );
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
 
     try {
-      // 1. 优先探测主服务器，不可用时回落备用服务器
-      final pick = await ServerEndpointService.pickAvailable(
-        primary: primaryUrl,
-        backup: backupUrl,
-      );
-
-      if (pick == null) {
-        setState(() {
-          _errorMessage = backupUrl.isEmpty
-              ? '主服务器无法连接，请检查地址或配置备用服务器'
-              : '主服务器与备用服务器均无法连接';
-        });
-        return;
-      }
-
-      final serverUrl = pick.url;
-
-      // 2. 同步保存主备配置并更新全局 ApiConfig 的 BaseUrl
+      // 先持久化逻辑端点，随后由登录请求按“局域网直连 -> Tailnet”处理。
+      // 不能先做仅局域网的探测，否则外网首次登录会被错误阻断。
       await ServerEndpointService.save(
         primary: primaryUrl,
-        backup: backupUrl,
-        usingBackup: pick.usingBackup,
+        tailnetTarget: tailnetTarget,
       );
       NetworkClient.reset();
-      await ApiConfig.setBaseUrl(serverUrl);
-      await AuthService.saveBaseUrl(serverUrl);
+      await ApiConfig.setBaseUrl(primaryUrl);
+      await AuthService.saveBaseUrl(primaryUrl);
 
-      final dio = NetworkClient.getDio(baseUrl: serverUrl);
+      final dio = NetworkClient.getDio(baseUrl: primaryUrl);
       final path = _isRegisterMode ? '/api/v1/auth/register' : '/api/v1/auth/login';
 
       final response = await dio.post(
@@ -199,7 +174,7 @@ class _LoginPageState extends State<LoginPage> {
       await ApiConfig.onLoginSuccess(token: token, user: user);
       await AuthService.saveToken(token);
 
-      final authedDio = NetworkClient.getDio(baseUrl: serverUrl, token: token);
+      final authedDio = NetworkClient.getDio(baseUrl: primaryUrl, token: token);
 
       // 5. 登录成功后静默拉取远端全量阅读进度
       await ProgressSyncService.syncWithRemote(authedDio);
@@ -210,16 +185,9 @@ class _LoginPageState extends State<LoginPage> {
         username: username,
         password: password,
         rememberPassword: _rememberPassword,
-        backupUrl: backupUrl,
       );
 
       if (!mounted) return;
-
-      if (pick.usingBackup) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('主服务器不可用，已通过备用服务器登录')),
-        );
-      }
 
       Navigator.pushReplacement(
         context,
@@ -281,11 +249,11 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // 主服务端 URL（可从最近使用过的地址中切换）
+                  // 局域网服务端 URL（可从最近使用过的地址中切换）
                   TextFormField(
                     controller: _serverController,
                     decoration: InputDecoration(
-                      labelText: '主服务地址',
+                      labelText: '局域网服务器地址',
                       hintText: ApiConfig.baseUrl,
                       prefixIcon: const Icon(Icons.dns_outlined),
                       border: const OutlineInputBorder(),
@@ -336,42 +304,19 @@ class _LoginPageState extends State<LoginPage> {
                                   .toList(),
                             ),
                     ),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? '请输入服务器 URL' : null,
+                    validator: _validateServerUrl,
                   ),
                   const SizedBox(height: 8),
 
-                  // 备用服务地址（可选）：主服务不可用时自动尝试
-                  if (_showBackupField)
-                    TextFormField(
-                      controller: _backupServerController,
-                      decoration: InputDecoration(
-                        labelText: '备用服务地址（可选）',
-                        helperText: '主服务器不可用时自动尝试此地址',
-                        prefixIcon: const Icon(Icons.backup_outlined),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.close),
-                          tooltip: '移除备用服务器',
-                          onPressed: () => setState(() {
-                            _backupServerController.clear();
-                            _showBackupField = false;
-                          }),
-                        ),
-                      ),
-                    )
-                  else
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => setState(() => _showBackupField = true),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('添加备用服务器'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF382E25),
-                        ),
-                      ),
+                  TextFormField(
+                    controller: _tailnetTargetController,
+                    decoration: const InputDecoration(
+                      labelText: 'Tailnet 目标（可选）',
+                      helperText: '局域网连接失败时通过 Tailnet 访问，例如 nas.example.ts.net:6088',
+                      prefixIcon: Icon(Icons.vpn_lock_outlined),
+                      border: OutlineInputBorder(),
                     ),
+                  ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _usernameController,
@@ -482,5 +427,19 @@ class _LoginPageState extends State<LoginPage> {
         ),
       ),
     );
+  }
+
+  String? _validateServerUrl(String? value) {
+    final text = (value ?? '').trim();
+    if (text.isEmpty) return '请输入服务器地址';
+
+    final uri = Uri.tryParse(text);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return '请输入完整地址，例如 http://nas:6088';
+    }
+    if (uri.scheme != 'http' && uri.scheme != 'https') {
+      return '仅支持 http 或 https';
+    }
+    return null;
   }
 }

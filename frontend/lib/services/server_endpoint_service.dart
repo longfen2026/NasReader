@@ -5,29 +5,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_logger.dart';
 import 'server_profile_service.dart';
 
-/// 主备服务器配置与当前生效地址
+/// 用户配置的局域网服务器地址。
 class ServerEndpoints {
   final String primary;
-  final String backup;
-
-  /// 当前生效地址是否为备用服务器
-  final bool usingBackup;
+  final String tailnetTarget;
 
   const ServerEndpoints({
     this.primary = '',
-    this.backup = '',
-    this.usingBackup = false,
+    this.tailnetTarget = '',
   });
 
-  bool get hasBackup => backup.isNotEmpty;
-
-  /// 当前应当使用的地址：仅在标记为备用且备用地址存在时才返回备用
-  String get active => (usingBackup && hasBackup) ? backup : primary;
+  bool get hasTailnetTarget => tailnetTarget.isNotEmpty;
 }
 
-/// 管理主/备服务器地址，并在主服务不可用时自动切换到备用地址
+/// 管理局域网服务器地址与其直连健康检查。
 class ServerEndpointService {
   static const String _keyPrimary = 'server_primary_url';
+  static const String _keyTailnetTarget = 'server_tailnet_target';
+  // 仅用于迁移既有主备配置，新的版本不会读取或写入它们。
   static const String _keyBackup = 'server_backup_url';
   static const String _keyUsingBackup = 'server_using_backup';
 
@@ -45,29 +40,36 @@ class ServerEndpointService {
   static Future<ServerEndpoints> load() async {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString(_keyPrimary) ?? '';
-    final backup = prefs.getString(_keyBackup) ?? '';
-    return ServerEndpoints(
-      primary: primary,
-      backup: backup,
-      usingBackup: (prefs.getBool(_keyUsingBackup) ?? false) && backup.isNotEmpty,
-    );
+    final tailnetTarget = prefs.getString(_keyTailnetTarget) ?? '';
+    return ServerEndpoints(primary: primary, tailnetTarget: tailnetTarget);
   }
 
   static Future<void> save({
     required String primary,
-    required String backup,
-    required bool usingBackup,
+    String tailnetTarget = '',
   }) async {
     final normalizedPrimary = normalizeUrl(primary);
-    final normalizedBackup = normalizeUrl(backup);
+    final normalizedTailnetTarget = normalizeTailnetTarget(tailnetTarget);
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyPrimary, normalizedPrimary);
-    await prefs.setString(_keyBackup, normalizedBackup);
-    await prefs.setBool(
-      _keyUsingBackup,
-      usingBackup && normalizedBackup.isNotEmpty,
-    );
+    if (normalizedTailnetTarget.isEmpty) {
+      await prefs.remove(_keyTailnetTarget);
+    } else {
+      await prefs.setString(_keyTailnetTarget, normalizedTailnetTarget);
+    }
+    await prefs.remove(_keyBackup);
+    await prefs.remove(_keyUsingBackup);
+  }
+
+  /// tsnet dial 使用 host:port，不接受 HTTP URL。
+  static String normalizeTailnetTarget(String target) {
+    var cleaned = target.trim();
+    cleaned = cleaned.replaceFirst(RegExp(r'^https?://'), '');
+    while (cleaned.endsWith('/')) {
+      cleaned = cleaned.substring(0, cleaned.length - 1);
+    }
+    return cleaned;
   }
 
   /// 探测单个地址是否可用
@@ -101,75 +103,24 @@ class ServerEndpointService {
     }
   }
 
-  /// 优先探测主服务器，不可用时回落备用服务器；均不可用返回 null
+  /// 探测用户配置的局域网服务器；不可达时返回 null。
   static Future<ServerEndpointPick?> pickAvailable({
     required String primary,
-    String backup = '',
     Dio? client,
   }) async {
     final normalizedPrimary = normalizeUrl(primary);
-    final normalizedBackup = normalizeUrl(backup);
 
     if (normalizedPrimary.isNotEmpty && await probe(normalizedPrimary, client: client)) {
-      return ServerEndpointPick(url: normalizedPrimary, usingBackup: false);
-    }
-
-    if (normalizedBackup.isNotEmpty && await probe(normalizedBackup, client: client)) {
-      AppLogger.log('🔀 主服务器不可用，切换到备用服务器 $normalizedBackup');
-      return ServerEndpointPick(url: normalizedBackup, usingBackup: true);
+      return ServerEndpointPick(url: normalizedPrimary);
     }
 
     return null;
   }
-
-  /// 启动 / 从后台恢复时调用：校验当前生效地址，必要时在主备之间切换
-  ///
-  /// 主服务器不可用则回落备用；备用运行期间主服务器恢复则静默切回。
-  /// 返回需要生效的新地址；无需切换或主备均不可用时返回 null。
-  static Future<ServerEndpointPick?> ensureActiveEndpoint({
-    String currentUrl = '',
-    Dio? client,
-  }) async {
-    final endpoints = await load();
-    final current = normalizeUrl(currentUrl);
-    // 历史版本可能只存过 ApiConfig 的 baseUrl，没有写入主服务器配置
-    final primary = endpoints.primary.isNotEmpty ? endpoints.primary : current;
-
-    if (primary.isEmpty && !endpoints.hasBackup) return null;
-    // 没有备用地址且当前就是主地址时，探测结果无法带来任何切换
-    if (!endpoints.hasBackup && current == primary) return null;
-
-    final pick = await pickAvailable(
-      primary: primary,
-      backup: endpoints.backup,
-      client: client,
-    );
-    if (pick == null) {
-      AppLogger.log('⚠️ 主备服务器均不可达，保持当前地址 $current');
-      return null;
-    }
-    if (pick.url == current && pick.usingBackup == endpoints.usingBackup) {
-      return null;
-    }
-
-    await save(
-      primary: primary,
-      backup: endpoints.backup,
-      usingBackup: pick.usingBackup,
-    );
-    AppLogger.log(
-      pick.usingBackup
-          ? '🔀 已切换到备用服务器 ${pick.url}'
-          : '✅ 主服务器可用，切回 ${pick.url}',
-    );
-    return pick;
-  }
 }
 
-/// 探测结果：选中的地址及其是否为备用服务器
+/// 局域网直连健康检查的结果。
 class ServerEndpointPick {
   final String url;
-  final bool usingBackup;
 
-  const ServerEndpointPick({required this.url, required this.usingBackup});
+  const ServerEndpointPick({required this.url});
 }
