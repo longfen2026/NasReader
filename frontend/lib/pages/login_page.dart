@@ -297,19 +297,19 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.auto_stories,
                     size: 64,
-                    color: Color(0xFF382E25),
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(height: 16),
                   Text(
                     _isRegisterMode ? '创建阅读器账号' : '登录 NAS 同步服务',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF382E25),
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -494,15 +494,15 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                     onPressed: _isLoading ? null : _submit,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: const Color(0xFF382E25),
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                     ),
                     child: _isLoading
-                        ? const SizedBox(
+                        ? SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: Theme.of(context).colorScheme.onPrimary,
                             ),
                           )
                         : Text(
@@ -522,7 +522,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                     },
                     child: Text(
                       _isRegisterMode ? '已有账号？返回登录' : '没有账号？点击注册新用户',
-                      style: const TextStyle(color: Color(0xFF382E25)),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ],

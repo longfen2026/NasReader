@@ -237,6 +237,18 @@ class SettingsPageState extends State<SettingsPage>
     );
   }
 
+  /// 主题色预设的色块图标，直观展示各预设的主色
+  Widget _buildPresetSwatch(AppThemePreset preset) {
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: preset.lightColorScheme.primary,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+
   Future<void> _checkUpdate() async {
     setState(() => _isCheckingUpdate = true);
 
@@ -264,11 +276,12 @@ class SettingsPageState extends State<SettingsPage>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.system_update, color: Color(0xFF5A4A3A)),
-            SizedBox(width: 8),
-            Text('发现新版本'),
+            Icon(Icons.system_update,
+                color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text('发现新版本'),
           ],
         ),
         content: Column(
@@ -310,8 +323,8 @@ class SettingsPageState extends State<SettingsPage>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF382E25),
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
             ),
             onPressed: () {
               Navigator.pop(ctx);
@@ -343,11 +356,12 @@ class SettingsPageState extends State<SettingsPage>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.auto_stories, color: Color(0xFF5A4A3A)),
-            SizedBox(width: 8),
-            Text('关于 NAS Reader'),
+            Icon(Icons.auto_stories,
+                color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text('关于 NAS Reader'),
           ],
         ),
         content: Column(
@@ -428,14 +442,14 @@ class SettingsPageState extends State<SettingsPage>
             ListTile(
               leading: CircleAvatar(
                 radius: 18,
-                backgroundColor: const Color(0xFF5A4A3A),
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 child: Text(
                   (user?.username.isNotEmpty ?? false)
                       ? user!.username[0].toUpperCase()
                       : 'U',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.bold),
                 ),
               ),
@@ -495,6 +509,33 @@ class SettingsPageState extends State<SettingsPage>
                       // 触发全局 ThemeManager 更新并通知 main.dart 重绘
                       ThemeManager.updateTheme(newSelection.first);
                     },
+                  );
+                },
+              ),
+            ),
+
+            // 主题色预设（Purple / Blue / Green / Amber / Teal），与 ThemeManager.presetNotifier 联动
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: ValueListenableBuilder<AppThemePreset>(
+                valueListenable: ThemeManager.presetNotifier,
+                builder: (context, currentPreset, _) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SegmentedButton<AppThemePreset>(
+                      segments: [
+                        for (final preset in AppThemePreset.values)
+                          ButtonSegment<AppThemePreset>(
+                            value: preset,
+                            label: Text(preset.label),
+                            icon: _buildPresetSwatch(preset),
+                          ),
+                      ],
+                      selected: {currentPreset},
+                      onSelectionChanged: (Set<AppThemePreset> newSelection) {
+                        ThemeManager.updatePreset(newSelection.first);
+                      },
+                    ),
                   );
                 },
               ),
@@ -822,14 +863,14 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                 children: [
                   CircleAvatar(
                     radius: 32,
-                    backgroundColor: const Color(0xFF5A4A3A),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     child: Text(
                       (user?.username.isNotEmpty ?? false)
                           ? user!.username[0].toUpperCase()
                           : 'U',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 24,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onPrimary,
                           fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -916,8 +957,8 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading:
-                      const Icon(Icons.dns_outlined, color: Color(0xFF5A4A3A)),
+                  leading: Icon(Icons.dns_outlined,
+                      color: Theme.of(context).colorScheme.primary),
                   title: const Text('服务器地址配置', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
@@ -1010,8 +1051,8 @@ class _AccountCenterPageState extends State<AccountCenterPage>
               side: BorderSide(color: Colors.grey.shade300),
             ),
             child: ListTile(
-              leading:
-                  const Icon(Icons.password_outlined, color: Color(0xFF5A4A3A)),
+              leading: Icon(Icons.password_outlined,
+                  color: Theme.of(context).colorScheme.primary),
               title: const Text('修改登录密码', style: TextStyle(fontSize: 14)),
               subtitle:
                   const Text('修改成功后需重新登录', style: TextStyle(fontSize: 12)),
@@ -1181,15 +1222,15 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
                       onPressed: _isSubmitting ? null : _submit,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: const Color(0xFF382E25),
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                       ),
                       child: _isSubmitting
-                          ? const SizedBox(
+                          ? SizedBox(
                               height: 20,
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onPrimary,
                               ),
                             )
                           : const Text('检测并保存'),
@@ -1330,15 +1371,16 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               FilledButton(
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: const Color(0xFF382E25),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                 ),
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
-                    ? const SizedBox(
+                    ? SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onPrimary),
                       )
                     : const Text('确认修改', style: TextStyle(fontSize: 16)),
               ),

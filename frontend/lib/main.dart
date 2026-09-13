@@ -52,31 +52,30 @@ class _MyAppState extends State<MyApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeManager.themeModeNotifier,
       builder: (context, currentThemeMode, _) {
-        return MaterialApp(
-          title: 'NAS Reader',
-          navigatorKey: navigatorKey,
-          debugShowCheckedModeBanner: false,
-          // 1. 绑定全局主题模式（跟随系统/浅色/深色）
-          themeMode: currentThemeMode,
-          // 2. 浅色主题配置
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF382E25),
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          // 3. 深色主题配置（必须配置，否则深色模式下不会生效）
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF382E25),
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
-          home: ApiConfig.isLoggedIn
-              ? MainNavigationContainer(dio: NetworkClient.getDio())
-              : const LoginPage(),
+        return ValueListenableBuilder<AppThemePreset>(
+          valueListenable: ThemeManager.presetNotifier,
+          builder: (context, currentPreset, _) {
+            return MaterialApp(
+              title: 'NAS Reader',
+              navigatorKey: navigatorKey,
+              debugShowCheckedModeBanner: false,
+              // 1. 绑定全局主题模式（跟随系统/浅色/深色）
+              themeMode: currentThemeMode,
+              // 2. 浅色主题配置：颜色值来自主题色预设（Purple / Blue）
+              theme: ThemeData(
+                colorScheme: currentPreset.lightColorScheme,
+                useMaterial3: true,
+              ),
+              // 3. 深色主题配置（必须配置，否则深色模式下不会生效）
+              darkTheme: ThemeData(
+                colorScheme: currentPreset.darkColorScheme,
+                useMaterial3: true,
+              ),
+              home: ApiConfig.isLoggedIn
+                  ? MainNavigationContainer(dio: NetworkClient.getDio())
+                  : const LoginPage(),
+            );
+          },
         );
       },
     );
