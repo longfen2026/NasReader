@@ -17,13 +17,20 @@ void main() {
   test('主题名称唯一，选中判定可仅依赖 name', () {
     final names = ReaderThemes.all.map((t) => t.name).toList();
     expect(names.toSet().length, names.length);
-    expect(names, ['羊皮纸1', '羊皮纸2', '夜空', '黑夜', '纯白']);
+    expect(names, ['羊皮纸1', '羊皮纸2', '夜空', '黑夜', '纯白', '纯黑']);
   });
 
-  test('只有纯白主题保持纯色', () {
+  test('只有纯白与纯黑主题保持纯色', () {
     final withImage = ReaderThemes.all.where((t) => t.backgroundImage != null);
     expect(withImage.map((t) => t.name), ['羊皮纸1', '羊皮纸2', '夜空', '黑夜']);
     expect(ReaderThemes.white.backgroundImage, isNull);
+  });
+
+  test('纯黑主题使用纯黑背景与浅色文字', () {
+    expect(ReaderThemes.black.name, '纯黑');
+    expect(ReaderThemes.black.bgColor, const Color(0xFF000000));
+    expect(ReaderThemes.black.backgroundImage, isNull);
+    expect(ReaderThemes.black.textColor, isNotNull);
   });
 
   test('所有主题背景图均已打进 asset bundle', () async {

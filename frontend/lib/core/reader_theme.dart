@@ -46,12 +46,18 @@ class ReaderThemes {
     bgColor: Color(0xFFFFFFFF),
     textColor: Color(0xFF1A1A1A),
   );
+  static const black = ReaderThemeData(
+    name: '纯黑',
+    bgColor: Color(0xFF000000),
+    textColor: Color(0xFFF5F5F5),
+  );
 
   static const List<ReaderThemeData> all = [
     parchment,
     parchment2,
     nightSky,
     night,
-    white
+    white,
+    black
   ];
 }
