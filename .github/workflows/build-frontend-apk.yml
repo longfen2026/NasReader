@@ -71,10 +71,10 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          flutter build apk --release --android-skip-build-dependency-validation
+          flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
 
-      # 动态计算版本名并重命名 APK 为 NasReader-<Tag号>.apk
-      - name: Rename APK with Tag
+      # 动态计算版本名并重命名各 ABI 的 APK 为 NasReader-<Tag号>-<ABI>.apk
+      - name: Rename APKs with Tag
         id: prepare_apk
         run: |
           # 提取 Tag 名（例如 v1.0.0），若无 Tag 则使用 Short SHA
@@ -84,29 +84,32 @@ jobs:
             TAG_NAME="${GITHUB_SHA::7}"
           fi
           
-          APK_NAME="NasReader-${TAG_NAME}.apk"
-          SRC_PATH="frontend/build/app/outputs/flutter-apk/app-release.apk"
-          TARGET_PATH="frontend/build/app/outputs/flutter-apk/${APK_NAME}"
-          
-          echo "Renaming $SRC_PATH to $TARGET_PATH"
-          cp "$SRC_PATH" "$TARGET_PATH"
+          APK_DIR="frontend/build/app/outputs/flutter-apk"
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            SRC_PATH="${APK_DIR}/app-${ABI}-release.apk"
+            if [[ -f "$SRC_PATH" ]]; then
+              TARGET_PATH="${APK_DIR}/NasReader-${TAG_NAME}-${ABI}.apk"
+              echo "Renaming $SRC_PATH to $TARGET_PATH"
+              cp "$SRC_PATH" "$TARGET_PATH"
+            fi
+          done
           
           # 输出变量给后续步骤使用
-          echo "apk_path=$TARGET_PATH" >> $GITHUB_OUTPUT
-          echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
+          echo "apk_name=NasReader-${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "apk_glob=${APK_DIR}/NasReader-${TAG_NAME}-*.apk" >> $GITHUB_OUTPUT
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.prepare_apk.outputs.apk_name }}
-          path: ${{ steps.prepare_apk.outputs.apk_path }}
+          path: ${{ steps.prepare_apk.outputs.apk_glob }}
           retention-days: 14
 
       - name: Publish Release (Tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.prepare_apk.outputs.apk_path }}
+          files: ${{ steps.prepare_apk.outputs.apk_glob }}
           draft: false
           prerelease: false
           generate_release_notes: true

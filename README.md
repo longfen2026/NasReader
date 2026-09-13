@@ -180,8 +180,10 @@ cd frontend
 flutter pub get
 flutter run                  # 调试
 flutter test                 # 单元测试
-flutter build apk --release  # 本地打包
+flutter build apk --release --split-per-abi  # 本地打包（按 ABI 拆分）
 ```
+
+拆分构建会在 `build/app/outputs/flutter-apk/` 下产出三个 APK：`app-arm64-v8a-release.apk`（现代手机，约 51MB）、`app-armeabi-v7a-release.apk`（32 位旧设备）、`app-x86_64-release.apk`（模拟器）。注意 Tailnet（tailscale）原生库仅提供 arm64-v8a，故仅该架构支持外网访问。
 
 首次启动在登录页填写局域网服务器地址（如 `http://192.168.1.10:6088`）。如需为外网访问预先配置 Tailnet，可填写目标的 `host:port`（如 `nas.example.ts.net:6088`）；当前 Android 原生 `libtailscale` 转发层尚未接入，因此该字段暂不会提供外网访问。注册需要服务端配置的邀请码。
 
@@ -194,7 +196,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-Tag 推送后自动产出 `NasReader-v1.0.0.apk` 并发布至 GitHub Releases，同时构建并推送后端多架构镜像。
+Tag 推送后自动产出 `NasReader-<Tag>-<ABI>.apk`（按 ABI 拆分）并发布至 GitHub Releases，同时构建并推送后端多架构镜像。
 
 ---
 

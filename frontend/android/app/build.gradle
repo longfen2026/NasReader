@@ -49,10 +49,9 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
-
-        ndk {
-            abiFilters "arm64-v8a"
-        }
+        // 注意：不要在此设置 ndk { abiFilters }。
+        // 它会与 `flutter build apk --split-per-abi` 注入的 splits ABI 过滤器冲突，
+        // 且对 fat APK 构建无效（Flutter 插件会自行合并全部目标平台）。
     }
 
     signingConfigs {
