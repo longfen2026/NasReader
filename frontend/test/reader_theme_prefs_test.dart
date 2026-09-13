@@ -12,8 +12,8 @@ void main() {
     });
 
     test('save 后 load 能取回同一个主题', () async {
-      await ReaderThemePrefs.save(ReaderThemes.dark);
-      expect(await ReaderThemePrefs.load(), ReaderThemes.dark);
+      await ReaderThemePrefs.save(ReaderThemes.night);
+      expect(await ReaderThemePrefs.load(), ReaderThemes.night);
     });
 
     test('每个内置主题都能完整往返', () async {

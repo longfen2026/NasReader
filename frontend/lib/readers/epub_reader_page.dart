@@ -165,7 +165,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   Future<void> _toggleEpubBookmark() async {
     if (_currentCfi.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('页面尚未准备就绪，无法记录书签'), duration: Duration(milliseconds: 1000)),
+        const SnackBar(
+            content: Text('页面尚未准备就绪，无法记录书签'),
+            duration: Duration(milliseconds: 1000)),
       );
       return;
     }
@@ -188,7 +190,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已添加书签并同步'), duration: Duration(milliseconds: 1200)),
+        const SnackBar(
+            content: Text('已添加书签并同步'), duration: Duration(milliseconds: 1200)),
       );
     }
   }
@@ -218,9 +221,17 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       final jsZipSource = await rootBundle.loadString('assets/js/jszip.min.js');
       final epubJsSource = await rootBundle.loadString('assets/js/epub.min.js');
 
-      // 纸纹图一次性内联成 data URI，避免切主题时通过 runJavaScript 传输大体积字符串
-      final bgImageData = await rootBundle.load(ReaderThemes.parchment2.backgroundImage!);
-      final bgImageBase64 = base64Encode(bgImageData.buffer.asUint8List());
+      // 所有背景图一次性内联，切换主题时只传递资源路径，避免重复跨 WebView 传输大体积数据。
+      final backgroundImageDataUris = <String, String>{};
+      for (final theme in ReaderThemes.all) {
+        final backgroundImage = theme.backgroundImage;
+        if (backgroundImage == null) continue;
+        final imageData = await rootBundle.load(backgroundImage);
+        final mimeType =
+            backgroundImage.endsWith('.png') ? 'image/png' : 'image/jpeg';
+        backgroundImageDataUris[backgroundImage] =
+            'data:$mimeType;base64,${base64Encode(imageData.buffer.asUint8List())}';
+      }
 
       _webViewController = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -256,8 +267,15 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
         _webViewController.setBackgroundColor(savedTheme.bgColor);
       }
 
-      final html = _buildEpubViewerHtml(base64Epub, widget.initialCfi, jsZipSource, epubJsSource, bgImageBase64);
-      await _webViewController.loadHtmlString(html, baseUrl: 'https://localhost/');
+      final html = _buildEpubViewerHtml(
+        base64Epub,
+        widget.initialCfi,
+        jsZipSource,
+        epubJsSource,
+        backgroundImageDataUris,
+      );
+      await _webViewController.loadHtmlString(html,
+          baseUrl: 'https://localhost/');
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -282,7 +300,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
           final locationsReady = data['locationsReady'] as bool? ?? true;
           final reported = (data['percentage'] as num?)?.toDouble() ?? 0.0;
           // locations 索引生成完成前 percentage 恒为 0，此时沿用已有进度，避免把书架百分比冲成 0
-          final progress = locationsReady ? reported.clamp(0.0, 1.0) : _currentProgress;
+          final progress =
+              locationsReady ? reported.clamp(0.0, 1.0) : _currentProgress;
           if (mounted) {
             setState(() {
               _currentCfi = cfi;
@@ -320,13 +339,14 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     String? startCfi,
     String jsZipSource,
     String epubJsSource,
-    String bgImageBase64,
+    Map<String, String> backgroundImageDataUris,
   ) {
     final initialLocation = (startCfi != null && startCfi.isNotEmpty)
         ? jsonEncode(startCfi)
         : 'undefined';
     // 内嵌页的初始底色跟随已恢复的主题，不能写死成羊皮纸
-    final initialBg = '#${_currentTheme.bgColor.toARGB32().toRadixString(16).substring(2)}';
+    final initialBg =
+        '#${_currentTheme.bgColor.toARGB32().toRadixString(16).substring(2)}';
 
     return '''
 <!DOCTYPE html>
@@ -381,7 +401,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     }
 
     const wrapper = document.getElementById("wrapper");
-    const PARCHMENT_BG = "data:image/jpeg;base64,$bgImageBase64";
+    const BACKGROUND_IMAGES = ${jsonEncode(backgroundImageDataUris)};
 
     try {
       const base64Data = ${jsonEncode(base64Epub)};
@@ -504,11 +524,12 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
         });
       };
 
-      window.setTheme = (bgColor, textColor, useBgImage) => {
-        if (useBgImage) {
+      window.setTheme = (bgColor, textColor, backgroundImage) => {
+        const backgroundImageDataUri = BACKGROUND_IMAGES[backgroundImage];
+        if (backgroundImageDataUri) {
           // 纹理链在不参与平移的 body 上，wrapper 与 iframe 正文置为透明，避免翻页时背景跟着滑动
           document.body.style.backgroundColor = bgColor;
-          document.body.style.backgroundImage = 'url("' + PARCHMENT_BG + '")';
+          document.body.style.backgroundImage = 'url("' + backgroundImageDataUri + '")';
           document.body.style.backgroundSize = 'cover';
           document.body.style.backgroundPosition = 'center center';
           document.body.style.backgroundRepeat = 'no-repeat';
@@ -573,7 +594,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     _isDragging = false;
 
     final velocity = details.primaryVelocity ?? 0.0;
-    final bool reachDistanceThreshold = _dragOffset.abs() > (screenWidth * 0.20);
+    final bool reachDistanceThreshold =
+        _dragOffset.abs() > (screenWidth * 0.20);
     final bool reachVelocityThreshold = velocity.abs() > 300.0;
     final bool canFlip = reachDistanceThreshold || reachVelocityThreshold;
 
@@ -582,7 +604,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     if (canFlip) {
       final targetDx = isNext ? -screenWidth : screenWidth;
       final action = isNext ? 'next' : 'prev';
-      _webViewController.runJavaScript("window.finishSlide('$action', $targetDx);");
+      _webViewController
+          .runJavaScript("window.finishSlide('$action', $targetDx);");
     } else {
       _webViewController.runJavaScript("window.finishSlide('cancel', 0);");
     }
@@ -598,7 +621,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     }
 
     // href 取自 EPUB 目录，同样按 JSON 字面量传入
-    _webViewController.runJavaScript('window.goToHref(${jsonEncode(href.trim())});');
+    _webViewController
+        .runJavaScript('window.goToHref(${jsonEncode(href.trim())});');
   }
 
   void _updateReaderTheme(ReaderThemeData theme) {
@@ -612,9 +636,11 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
 
   void _applyTheme(ReaderThemeData theme) {
     final bgHex = '#${theme.bgColor.toARGB32().toRadixString(16).substring(2)}';
-    final textHex = '#${theme.textColor.toARGB32().toRadixString(16).substring(2)}';
-    final useBgImage = theme.backgroundImage != null;
-    _webViewController.runJavaScript('window.setTheme("$bgHex", "$textHex", $useBgImage);');
+    final textHex =
+        '#${theme.textColor.toARGB32().toRadixString(16).substring(2)}';
+    _webViewController.runJavaScript(
+      'window.setTheme(${jsonEncode(bgHex)}, ${jsonEncode(textHex)}, ${jsonEncode(theme.backgroundImage)});',
+    );
   }
 
   void _applyTypographyToEpub(TypographyConfig config) {
@@ -723,7 +749,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
           _loadBookmarks();
         },
         tocView: _toc.isEmpty
-            ? const Center(child: Text('暂无目录数据', style: TextStyle(color: Colors.grey)))
+            ? const Center(
+                child: Text('暂无目录数据', style: TextStyle(color: Colors.grey)))
             : ListView.builder(
                 itemCount: _toc.length,
                 itemBuilder: (context, index) => _buildTocItem(_toc[index]),
@@ -758,9 +785,12 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, size: 56, color: Colors.redAccent),
+                    const Icon(Icons.error_outline,
+                        size: 56, color: Colors.redAccent),
                     const SizedBox(height: 16),
-                    Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
+                    Text(_errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.redAccent)),
                   ],
                 ),
               ),
@@ -785,19 +815,23 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                       Expanded(
                         child: Text(
                           widget.title,
-                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 16),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white),
+                        icon: const Icon(Icons.bookmark_add_outlined,
+                            color: Colors.white),
                         tooltip: '添加书签',
                         onPressed: _toggleEpubBookmark,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.format_list_bulleted, color: Colors.white),
+                        icon: const Icon(Icons.format_list_bulleted,
+                            color: Colors.white),
                         tooltip: '目录与书签',
-                        onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                        onPressed: () =>
+                            _scaffoldKey.currentState?.openDrawer(),
                       ),
                     ],
                   ),
@@ -813,7 +847,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
               right: 0,
               child: Container(
                 color: Colors.black.withValues(alpha: 0.92),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: SafeArea(
                   top: false,
                   child: Column(
@@ -823,15 +858,18 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.skip_previous, color: Colors.white),
+                            icon: const Icon(Icons.skip_previous,
+                                color: Colors.white),
                             onPressed: _prevPage,
                           ),
                           Text(
                             '${(_currentProgress * 100).toStringAsFixed(1)}%',
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 14),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.skip_next, color: Colors.white),
+                            icon: const Icon(Icons.skip_next,
+                                color: Colors.white),
                             onPressed: _nextPage,
                           ),
                         ],
@@ -842,7 +880,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('手势操作', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          const Text('手势操作',
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                           Row(
                             children: HandMode.values.map((mode) {
                               final isSelected = _handMode == mode;
@@ -852,17 +892,24 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                                   label: Text(mode.label),
                                   selected: isSelected,
                                   selectedColor: const Color(0xFF5A4A3A),
-                                  backgroundColor: Colors.white.withValues(alpha: 0.12),
+                                  backgroundColor:
+                                      Colors.white.withValues(alpha: 0.12),
                                   checkmarkColor: Colors.white,
                                   showCheckmark: false,
                                   side: BorderSide(
-                                    color: isSelected ? const Color(0xFF8D7358) : Colors.transparent,
+                                    color: isSelected
+                                        ? const Color(0xFF8D7358)
+                                        : Colors.transparent,
                                     width: 1,
                                   ),
                                   labelStyle: TextStyle(
-                                    color: isSelected ? Colors.white : Colors.white70,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.white70,
                                     fontSize: 11,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                                   ),
                                   onSelected: (_) => _saveHandMode(mode),
                                 ),
@@ -878,8 +925,11 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           OutlinedButton.icon(
-                            icon: const Icon(Icons.text_format, color: Colors.white, size: 18),
-                            label: const Text('排版 / 字体', style: TextStyle(color: Colors.white, fontSize: 12)),
+                            icon: const Icon(Icons.text_format,
+                                color: Colors.white, size: 18),
+                            label: const Text('排版 / 字体',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 12)),
                             onPressed: _openTypographySettings,
                           ),
                           // 主题数量增加后单行放不下，允许横向滚动而非硬挤压
@@ -887,7 +937,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                             child: SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: Row(
-                                children: ReaderThemes.all.map(_buildThemeBtn).toList(),
+                                children: ReaderThemes.all
+                                    .map(_buildThemeBtn)
+                                    .toList(),
                               ),
                             ),
                           ),
@@ -915,7 +967,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
 
     if (!hasChildren) {
       return ListTile(
-        contentPadding: EdgeInsets.only(left: 16.0 + (depth * 16.0), right: 16.0),
+        contentPadding:
+            EdgeInsets.only(left: 16.0 + (depth * 16.0), right: 16.0),
         title: Text(
           chapter.label.isNotEmpty ? chapter.label : '未命名章节',
           style: const TextStyle(fontSize: 13),
@@ -940,7 +993,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
           ),
         ),
       ),
-      children: chapter.subitems.map((sub) => _buildTocItem(sub, depth + 1)).toList(),
+      children:
+          chapter.subitems.map((sub) => _buildTocItem(sub, depth + 1)).toList(),
     );
   }
 
@@ -969,7 +1023,10 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
           ),
           child: Text(
             theme.name,
-            style: TextStyle(color: theme.textColor, fontSize: 10, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: theme.textColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold),
           ),
         ),
       ),

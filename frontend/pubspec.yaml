@@ -1,7 +1,7 @@
 name: nas_reader
 description: "A lightweight NAS e-book reader with multi-device sync."
 publish_to: 'none'
-version: 0.8.0-tailnet+80
+version: 0.8.1-tailnet+80
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -54,5 +54,8 @@ flutter:
     # EPUB 渲染依赖的 JS 库本地化，避免运行时从 CDN 加载（离线可用 + 防供应链篡改）
     - assets/js/jszip.min.js
     - assets/js/epub.min.js
-    # 羊皮纸2 主题的纸纹背景图
-    - assets/readbg_01.jpg
+    # 阅读主题背景图
+    - assets/readbg_1.png
+    - assets/readbg_2.jpg
+    - assets/readbg_3.jpg
+    - assets/readbg_4.jpg
