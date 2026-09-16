@@ -38,7 +38,13 @@ jobs:
           cache: true
 
       - name: Set up Android SDK
+        # Google 于 2026-09-15 下架了废弃的 'tools' 包，而本 action 默认安装
+        # 'tools platform-tools'，会导致 sdkmanager 报 "Failed to find package 'tools'" 并退出 1。
+        # 显式只安装 platform-tools（cmdline-tools 由 action 自身负责，NDK 在后续步骤单独安装）。
+        # 参考: https://github.com/android-actions/setup-android/issues/537
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Build Tailnet Android library
         working-directory: ./third_party/tailnet_android
