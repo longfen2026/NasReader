@@ -11,6 +11,7 @@ import '../core/reader_theme.dart';
 import '../core/page_turn_view.dart';
 import '../widgets/eye_care_config.dart';
 import '../widgets/eye_care_controls.dart';
+import '../widgets/theme_color_picker_dialog.dart';
 import '../widgets/typography_config.dart';
 import '../widgets/typography_settings_modal.dart';
 import '../services/app_logger.dart';
@@ -64,6 +65,8 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
   bool _isTurningPage = false; // 防抖锁状态标记
 
   ReaderThemeData _currentTheme = ReaderThemes.parchment;
+  // 各主题的自定义文字颜色（name -> ARGB int），与主题绑定持久化
+  Map<String, int> _customTextColors = {};
   HandMode _handMode = HandMode.standard;
   TypographyConfig _typoConfig = const TypographyConfig();
   EyeCareConfig _eyeCare = const EyeCareConfig();
@@ -90,6 +93,7 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
     _loadHandMode();
     _loadEyeCare();
     _loadReaderTheme();
+    _loadCustomTextColors();
     _loadBookmarks();
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
@@ -110,6 +114,49 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
     final saved = await ReaderThemePrefs.load();
     if (!mounted || saved.name == _currentTheme.name) return;
     setState(() => _currentTheme = saved);
+  }
+
+  Future<void> _loadCustomTextColors() async {
+    final saved = await ReaderThemePrefs.loadCustomTextColors();
+    if (!mounted || saved.isEmpty) return;
+    setState(() => _customTextColors = saved);
+  }
+
+  /// 当前主题实际生效的文字颜色：有自定义颜色优先，否则用默认色
+  Color get _effectiveTextColor =>
+      ReaderThemePrefs.effectiveTextColor(_currentTheme, _customTextColors);
+
+  /// 长按主题打开调色盘，自定义该主题的文字颜色
+  void _openColorPicker(ReaderThemeData theme) {
+    final savedValue = _customTextColors[theme.name];
+    ThemeColorPickerDialog.show(
+      context,
+      themeName: theme.name,
+      defaultColor: theme.textColor,
+      customColor: savedValue != null ? Color(savedValue) : null,
+      onConfirm: (color) async {
+        setState(() => _customTextColors[theme.name] = color.toARGB32());
+        await ReaderThemePrefs.saveCustomTextColor(theme.name, color);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('已自定义主题文字颜色'),
+                duration: Duration(milliseconds: 1000)),
+          );
+        }
+      },
+      onReset: () async {
+        setState(() => _customTextColors.remove(theme.name));
+        await ReaderThemePrefs.clearCustomTextColor(theme.name);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('已还原主题默认文字颜色'),
+                duration: Duration(milliseconds: 1000)),
+          );
+        }
+      },
+    );
   }
 
   void _updateReaderTheme(ReaderThemeData theme) {
@@ -548,12 +595,12 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: _currentTheme.textColor),
+              CircularProgressIndicator(color: _effectiveTextColor),
               const SizedBox(height: 16),
               Text(
                 '正在排版全文...',
                 style: TextStyle(
-                  color: _currentTheme.textColor.withValues(alpha: 0.6),
+                  color: _effectiveTextColor.withValues(alpha: 0.6),
                   fontSize: 13,
                 ),
               ),
@@ -780,6 +827,9 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
                                       padding: const EdgeInsets.only(left: 6),
                                       child: GestureDetector(
                                         onTap: () => _updateReaderTheme(theme),
+                                        // 长按打开调色盘，自定义该主题的文字颜色
+                                        onLongPress: () =>
+                                            _openColorPicker(theme),
                                         child: Container(
                                           width: 48,
                                           height: 28,
@@ -801,7 +851,11 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
                                           child: Text(
                                             theme.name,
                                             style: TextStyle(
-                                              color: theme.textColor,
+                                              // 展示该主题实际生效的文字颜色（含自定义色）
+                                              color: ReaderThemePrefs
+                                                  .effectiveTextColor(
+                                                      theme,
+                                                      _customTextColors),
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -868,7 +922,7 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
                   currentChapterTitle,
                   style: TextStyle(
                     fontSize: 11,
-                    color: _currentTheme.textColor.withValues(alpha: 0.5),
+                    color: _effectiveTextColor.withValues(alpha: 0.5),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -892,7 +946,7 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
                               height: 1.4,
                               letterSpacing: _typoConfig.letterSpacing + 0.5,
                               fontFamily: _typoConfig.customFontFamily,
-                              color: _currentTheme.textColor,
+                              color: _effectiveTextColor,
                             ),
                           ),
                         // 2. 正文内容
@@ -903,7 +957,7 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
                             height: _typoConfig.lineHeight,
                             letterSpacing: _typoConfig.letterSpacing,
                             fontFamily: _typoConfig.customFontFamily,
-                            color: _currentTheme.textColor,
+                            color: _effectiveTextColor,
                           ),
                         ),
                       ],
@@ -927,14 +981,14 @@ class _StreamTxtReaderPageState extends State<StreamTxtReaderPage>
                       '${pageIndex + 1} / $totalPages',
                       style: TextStyle(
                         fontSize: 11,
-                        color: _currentTheme.textColor.withValues(alpha: 0.5),
+                        color: _effectiveTextColor.withValues(alpha: 0.5),
                       ),
                     ),
                     Text(
                       '${(slice.endByteOffset / _totalFileSize * 100).toStringAsFixed(1)}%',
                       style: TextStyle(
                         fontSize: 11,
-                        color: _currentTheme.textColor.withValues(alpha: 0.5),
+                        color: _effectiveTextColor.withValues(alpha: 0.5),
                       ),
                     ),
                   ],

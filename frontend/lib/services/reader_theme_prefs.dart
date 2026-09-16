@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/reader_theme.dart';
@@ -36,5 +39,58 @@ class ReaderThemePrefs {
       if (theme.name == name) return theme;
     }
     return ReaderThemes.parchment;
+  }
+
+  // ==================== 自定义文字颜色 ====================
+
+  static const String _customKey = 'reader_theme_custom_text_colors';
+
+  /// 各主题的自定义文字颜色，按主题名持久化为 JSON Map（name -> ARGB int）
+  static Future<Map<String, int>> loadCustomTextColors() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_customKey);
+      if (raw == null || raw.isEmpty) return {};
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
+    } catch (e) {
+      AppLogger.log('⚠️ 自定义文字颜色读取失败: $e');
+      return {};
+    }
+  }
+
+  /// 为主题绑定一个自定义文字颜色
+  static Future<void> saveCustomTextColor(String themeName, Color color) async {
+    try {
+      final map = await loadCustomTextColors();
+      map[themeName] = color.toARGB32();
+      await _writeCustomColors(map);
+    } catch (e) {
+      AppLogger.log('⚠️ 自定义文字颜色保存失败: $e');
+    }
+  }
+
+  /// 重置主题的自定义文字颜色（还原为默认色）
+  static Future<void> clearCustomTextColor(String themeName) async {
+    try {
+      final map = await loadCustomTextColors();
+      if (map.remove(themeName) == null) return;
+      await _writeCustomColors(map);
+    } catch (e) {
+      AppLogger.log('⚠️ 自定义文字颜色重置失败: $e');
+    }
+  }
+
+  static Future<void> _writeCustomColors(Map<String, int> map) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_customKey, jsonEncode(map));
+  }
+
+  /// 主题实际使用的文字颜色：有自定义颜色优先，否则用默认色
+  static Color effectiveTextColor(
+      ReaderThemeData theme, Map<String, int> customMap) {
+    final value = customMap[theme.name];
+    if (value != null) return Color(value);
+    return theme.textColor;
   }
 }

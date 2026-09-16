@@ -11,6 +11,7 @@ import '../models/bookmark_model.dart';
 import '../services/bookmark_sync_service.dart';
 import '../widgets/eye_care_config.dart';
 import '../widgets/eye_care_controls.dart';
+import '../widgets/theme_color_picker_dialog.dart';
 import '../widgets/reader_drawer.dart';
 import '../widgets/typography_config.dart';
 import '../widgets/typography_settings_modal.dart';
@@ -85,6 +86,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   TypographyConfig _typoConfig = const TypographyConfig();
   EyeCareConfig _eyeCare = const EyeCareConfig();
   ReaderThemeData _currentTheme = ReaderThemes.parchment;
+  // 各主题的自定义文字颜色（name -> ARGB int），与主题绑定持久化
+  Map<String, int> _customTextColors = {};
 
   // 手势拖拽与瞬切状态
   bool _isTurningPage = false;
@@ -102,6 +105,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     _loadTypography();
     _loadHandMode();
     _loadEyeCare();
+    _loadCustomTextColors();
     _loadBookmarks();
     _initWebView();
   }
@@ -634,10 +638,58 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     _applyTheme(theme);
   }
 
+  Future<void> _loadCustomTextColors() async {
+    final saved = await ReaderThemePrefs.loadCustomTextColors();
+    if (!mounted || saved.isEmpty) return;
+    setState(() => _customTextColors = saved);
+  }
+
+  /// 当前主题实际生效的文字颜色：有自定义颜色优先，否则用默认色
+  Color get _effectiveTextColor =>
+      ReaderThemePrefs.effectiveTextColor(_currentTheme, _customTextColors);
+
+  /// 长按主题打开调色盘，自定义该主题的文字颜色
+  void _openColorPicker(ReaderThemeData theme) {
+    final savedValue = _customTextColors[theme.name];
+    ThemeColorPickerDialog.show(
+      context,
+      themeName: theme.name,
+      defaultColor: theme.textColor,
+      customColor: savedValue != null ? Color(savedValue) : null,
+      onConfirm: (color) async {
+        setState(() => _customTextColors[theme.name] = color.toARGB32());
+        await ReaderThemePrefs.saveCustomTextColor(theme.name, color);
+        // 正在使用的主题需要立即把新文字颜色推给 WebView
+        if (mounted && theme.name == _currentTheme.name) {
+          _applyTheme(_currentTheme);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('已自定义主题文字颜色'),
+                duration: Duration(milliseconds: 1000)),
+          );
+        }
+      },
+      onReset: () async {
+        setState(() => _customTextColors.remove(theme.name));
+        await ReaderThemePrefs.clearCustomTextColor(theme.name);
+        // 正在使用的主题重置后还原默认色
+        if (mounted && theme.name == _currentTheme.name) {
+          _applyTheme(_currentTheme);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('已还原主题默认文字颜色'),
+                duration: Duration(milliseconds: 1000)),
+          );
+        }
+      },
+    );
+  }
+
   void _applyTheme(ReaderThemeData theme) {
     final bgHex = '#${theme.bgColor.toARGB32().toRadixString(16).substring(2)}';
-    final textHex =
-        '#${theme.textColor.toARGB32().toRadixString(16).substring(2)}';
+    final effectiveTextColor =
+        ReaderThemePrefs.effectiveTextColor(theme, _customTextColors);
+    final textHex = '#${effectiveTextColor.toARGB32().toRadixString(16).substring(2)}';
     _webViewController.runJavaScript(
       'window.setTheme(${jsonEncode(bgHex)}, ${jsonEncode(textHex)}, ${jsonEncode(theme.backgroundImage)});',
     );
@@ -775,7 +827,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
 
           if (_isLoading)
             Center(
-              child: CircularProgressIndicator(color: _currentTheme.textColor),
+              child: CircularProgressIndicator(color: _effectiveTextColor),
             ),
 
           if (_errorMessage != null)
@@ -1005,6 +1057,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       padding: const EdgeInsets.only(left: 6),
       child: GestureDetector(
         onTap: () => _updateReaderTheme(theme),
+        // 长按打开调色盘，自定义该主题的文字颜色
+        onLongPress: () => _openColorPicker(theme),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
@@ -1024,7 +1078,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
           child: Text(
             theme.name,
             style: TextStyle(
-                color: theme.textColor,
+                // 展示该主题实际生效的文字颜色（含自定义色）
+                color: ReaderThemePrefs.effectiveTextColor(
+                    theme, _customTextColors),
                 fontSize: 10,
                 fontWeight: FontWeight.bold),
           ),
