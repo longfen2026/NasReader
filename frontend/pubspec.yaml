@@ -27,6 +27,9 @@ dependencies:
   archive: ^3.6.1
   xml: ^6.5.0
 
+  # MOBI/AZW/AZW3/KF8 解包转 EPUB（GPL-3.0，见 README 授权说明）
+  kindle_unpack: ^0.1.1
+
   # PDF 渲染（Android PdfRenderer / iOS PDFKit 原生视图）
   flutter_pdfview: 1.4.5
 

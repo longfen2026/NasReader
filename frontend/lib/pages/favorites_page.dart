@@ -14,6 +14,7 @@ import '../readers/pdf_reader_page.dart';
 import '../readers/stream_txt_reader_page.dart';
 import '../services/app_logger.dart';
 import '../services/favorite_service.dart';
+import '../services/mobi_converter.dart';
 import '../services/progress_sync_service.dart';
 
 class FavoritesPage extends StatefulWidget {
@@ -168,6 +169,21 @@ class FavoritesPageState extends State<FavoritesPage> {
     final file = await _ensureLocalFile(book);
     if (file == null || !mounted) return;
 
+    // MOBI 先解包成 EPUB，再复用 EPUB 渲染管线
+    File readerFile = file;
+    if (format == BookFormat.mobi) {
+      final epubFile = await MobiConverter.toEpub(file, book.bookId);
+      if (!mounted) return;
+      if (epubFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('MOBI 解析失败，可能为加密或不受支持的变体')),
+        );
+        return;
+      }
+      readerFile = epubFile;
+    }
+    final bool cfiBased = format == BookFormat.epub || format == BookFormat.mobi;
+
     // 曾从书架移除过的书，重新打开时把云端进度拉回本地
     await ProgressSyncService.restoreToShelf(book.bookId, _dio);
 
@@ -181,7 +197,7 @@ class FavoritesPageState extends State<FavoritesPage> {
         title: book.title,
         filePath: book.remotePath,
         progressPercent: 0.0,
-        locator: format == BookFormat.epub ? '' : '0',
+        locator: cfiBased ? '' : '0',
       );
     }
 
@@ -210,9 +226,10 @@ class FavoritesPageState extends State<FavoritesPage> {
               reportProgress(byteOffset.toString(), progress),
         );
       case BookFormat.epub:
+      case BookFormat.mobi:
         readerPage = EpubReaderPage(
           bookId: book.bookId,
-          file: file,
+          file: readerFile,
           title: book.title,
           initialCfi: saved?.epubCfi,
           initialProgress: saved?.progress ?? 0.0,

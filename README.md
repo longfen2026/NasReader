@@ -3,7 +3,7 @@
 
 面向 NAS / 私有服务器用户的电子书阅读方案。前后端分离：移动端 Flutter，后端 Go (Gin) + SQLite。
 
-直接浏览 NAS 挂载目录，流式读取并缓存 **TXT** / **EPUB** 书籍，跨设备同步阅读进度与书签，支持局域网直连、多套排版与阅读主题，以及内置网络诊断浮窗。
+直接浏览 NAS 挂载目录，流式读取并缓存 **TXT** / **EPUB** / **MOBI** / **PDF** 书籍，跨设备同步阅读进度与书签，支持局域网直连、多套排版与阅读主题，以及内置网络诊断浮窗。
 
 ---
 
@@ -13,6 +13,8 @@
 
 * **TXT 全文排版引擎**：预分页 + 流式加载，大文件低内存占用。
 * **EPUB 原生重排**：基于本地化的 `epub.js` + `jszip`（打包进 assets，离线可用且规避 CDN 供应链风险），保留章节结构与插图。
+* **MOBI / AZW / AZW3 / KF8 支持**：打开时经 `kindle_unpack` 解包并转换为 EPUB（后台 isolate 执行，结果按书籍指纹缓存），复用 EPUB 渲染管线；加密 DRM 文件无法解析。
+* **PDF 原生渲染**：基于 `flutter_pdfview`（Android `PdfRenderer` / iOS `PDFKit`），保留原始版式。
 * **跟手翻页动效**：自研 `PageTurnView`，拖拽跟手、松手回弹。
 * **手势热区定制**：常规手势 / 单手模式，九宫格热区可配置。
 * **排版设置**：字号、行高、字间距、段首缩进（中文全角双空格）、自定义字体导入。
@@ -21,7 +23,7 @@
 
 ### 书库与同步
 
-* **NAS 目录直连**：递归浏览目录树，隐藏文件自动过滤，按扩展名识别 TXT / EPUB。
+* **NAS 目录直连**：递归浏览目录树，隐藏文件自动过滤，按扩展名识别 TXT / EPUB / MOBI / PDF。
 * **文件指纹识别**：服务端为每个文件生成稳定 `book_id`（首尾哈希 + 体积），跨设备定位同一本书，不依赖文件路径。
 * **进度同步**：百分比 + 定位符（TXT 字节偏移 / EPUB CFI），并记录来源设备。
 * **书签双向同步**：LWW（Last-Write-Wins）合并策略 + 软删除标记，避免多端互相覆盖。
@@ -53,6 +55,8 @@
 | 本地存储 | `shared_preferences` / `path_provider` | 书架数据、配置项、书籍沙盒 |
 | 安全存储 | `flutter_secure_storage` | Token 与服务器密码 |
 | EPUB 渲染 | `webview_flutter` + `shelf_static` + `archive` + `xml` | 本地静态服务托管解包后的 EPUB |
+| MOBI 解包 | `kindle_unpack`（GPL-3.0） | MOBI/AZW/AZW3/KF8 → EPUB 纯 Dart 转换 |
+| PDF 渲染 | `flutter_pdfview` | Android `PdfRenderer` / iOS `PDFKit` 原生视图 |
 | 后端 | Go 1.22 / Gin 1.9 | 轻量 RESTful API |
 | 数据库 | SQLite（`glebarez/sqlite`）/ GORM | 纯 Go 驱动无 CGO，WAL 模式 |
 | 鉴权 | `golang-jwt/v5` + `bcrypt` | — |
@@ -110,8 +114,8 @@ NasReader/
     │   ├── core/                    # 排版引擎、翻页视图、字体、指纹、网络客户端、阅读主题、手势模式
 │   │   ├── models/                  # bookmark_model / favorite_book
 │   │   ├── pages/                   # 登录 / 本地书架 / NAS 浏览器 / 收藏夹 / 设置
-│   │   ├── readers/                 # stream_txt_reader / epub_reader
-│   │   ├── services/                # 鉴权、进度同步、书签同步、收藏同步、服务器端点与档案、封面提取、日志
+│   │   ├── readers/                 # stream_txt_reader / epub_reader / pdf_reader
+│   │   ├── services/                # 鉴权、进度同步、书签同步、收藏同步、服务器端点与档案、封面提取、MOBI 转换、日志
 │   │   ├── widgets/                 # 阅读器抽屉、排版设置、手势热区、收藏按钮
     │   ├── main_navigation_container.dart
     │   └── main.dart
@@ -202,4 +206,6 @@ Tag 推送后自动产出 `NasReader-<Tag>-<ABI>.apk`（按 ABI 拆分）并发�
 
 ## 📝 开源协议
 
-本项目基于 [MIT License](LICENSE) 开源。
+本项目自有代码基于 [MIT License](LICENSE) 开源。
+
+> ⚠️ 前端 MOBI 支持依赖 `kindle_unpack`（**GPL-3.0**）。该依赖的传染性会及于与其链接的前端构建产物，因此分发前端 APK 时须遵守 GPL-3.0 条款（提供对应源码等）。后端 Go 服务不引用该库，仍为纯 MIT。

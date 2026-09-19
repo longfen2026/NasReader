@@ -254,6 +254,12 @@
       "languageVersion": "2.19"
     },
     {
+      "name": "kindle_unpack",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/kindle_unpack-0.1.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
       "name": "leak_tracker",
       "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker-11.0.2",
       "packageUri": "lib/",

@@ -14,6 +14,7 @@ import '../readers/epub_reader_page.dart';
 import '../readers/pdf_reader_page.dart';
 import '../services/progress_sync_service.dart';
 import '../services/favorite_service.dart';
+import '../services/mobi_converter.dart';
 import '../services/app_logger.dart';
 import '../widgets/book_leading_icon.dart';
 
@@ -598,7 +599,42 @@ class FileBrowserPageState extends State<FileBrowserPage> {
     final initialOffset = savedRecord.txtByteOffset ?? 0;
     final initialCfi = savedRecord.epubCfi;
 
-    if (ext == '.txt') {
+    if (ext == '.mobi') {
+      final epubFile = await MobiConverter.toEpub(file, bookId);
+      if (!mounted) return;
+      if (epubFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('MOBI 解析失败，可能为加密或不受支持的变体')),
+        );
+        return;
+      }
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 120),
+          pageBuilder: (context, animation, secondaryAnimation) => EpubReaderPage(
+            bookId: bookId,
+            file: epubFile,
+            title: title,
+            initialCfi: initialCfi,
+            initialProgress: savedRecord.progress,
+            onProgressChanged: (cfi, progress) {
+              ProgressSyncService.updateProgress(
+                dio: _dio,
+                bookId: bookId,
+                title: title,
+                filePath: item.path,
+                progressPercent: progress,
+                locator: cfi,
+              );
+            },
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      ).then((_) => _updateCachedFiles());
+    } else if (ext == '.txt') {
       Navigator.push(
         context,
         PageRouteBuilder(

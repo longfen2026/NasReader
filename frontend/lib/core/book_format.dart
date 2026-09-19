@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 enum BookFormat {
   txt('.txt', Icons.description, Icons.description_outlined, Colors.blue),
   epub('.epub', Icons.menu_book, Icons.menu_book_outlined, Colors.green),
+  mobi('.mobi', Icons.auto_stories, Icons.auto_stories_outlined, Colors.deepOrange),
   pdf('.pdf', Icons.picture_as_pdf, Icons.picture_as_pdf_outlined, Colors.redAccent);
 
   final String extension;

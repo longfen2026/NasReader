@@ -377,7 +377,7 @@ class SettingsPageState extends State<SettingsPage>
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(
-              '• 支持 TXT 高速排版引擎、EPUB 精准重排与 PDF 原生渲染\n'
+              '• 支持 TXT 高速排版引擎、EPUB/MOBI 精准重排与 PDF 原生渲染\n'
               '• 挂载 NAS 物理存储目录，支持即点即读与离线缓存\n'
               '• 基于 LWW 策略的云端进度与书签跨设备毫秒级同步\n'
               '• 原生跟手滑动翻页与手势热区定制',

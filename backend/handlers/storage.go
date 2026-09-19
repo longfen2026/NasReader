@@ -19,6 +19,7 @@ import (
 var supportedBookExts = map[string]bool{
 	"txt":  true,
 	"epub": true,
+	"mobi": true,
 	"pdf":  true,
 }
 

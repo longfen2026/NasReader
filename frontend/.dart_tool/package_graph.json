@@ -17,6 +17,7 @@
         "flutter",
         "flutter_pdfview",
         "flutter_secure_storage",
+        "kindle_unpack",
         "open_file",
         "package_info_plus",
         "path",
@@ -125,6 +126,13 @@
       "version": "1.4.5",
       "dependencies": [
         "flutter"
+      ]
+    },
+    {
+      "name": "kindle_unpack",
+      "version": "0.1.1",
+      "dependencies": [
+        "archive"
       ]
     },
     {
