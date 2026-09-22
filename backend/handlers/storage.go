@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reader-sync/utils"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -54,8 +55,10 @@ func BrowseDirectory(c *gin.Context) {
 		return
 	}
 
-	// 1. 安全解析目标目录物理绝对路径
-	targetDir, err := utils.SafeResolvePath(reqPath)
+	inUploads := utils.IsUploadsPath(reqPath)
+
+	// 1. 安全解析目标目录物理绝对路径（自动区分 NAS 书库与上传目录两个根）
+	targetDir, _, err := utils.ResolveLibraryPath(reqPath)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
@@ -71,6 +74,11 @@ func BrowseDirectory(c *gin.Context) {
 
 	entries, err := os.ReadDir(targetDir)
 	if err != nil {
+		// 上传目录尚未创建（无人上传过）时，返回空列表而非 404
+		if os.IsNotExist(err) && inUploads {
+			c.JSON(http.StatusOK, gin.H{"current_path": reqPath, "items": []FileNode{}})
+			return
+		}
 		if os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "目录不存在"})
 			return
@@ -79,9 +87,37 @@ func BrowseDirectory(c *gin.Context) {
 		return
 	}
 
-	nasRoot := utils.GetNasRootDir()
-	var nodes []FileNode
+	// 相对路径的计算基准与展示前缀随所属根目录切换
+	relRoot := utils.GetNasRootDir()
+	pathPrefix := ""
+	if inUploads {
+		relRoot = utils.GetUploadsRootDir()
+		pathPrefix = "/" + utils.UploadsPathPrefix
+	}
 
+	nodes := collectBookNodes(entries, targetDir, relRoot, pathPrefix)
+
+	// 在书库根目录额外注入“上传书籍”虚拟目录（仅当上传目录里确实有书时）
+	if utils.NormalizeRelPath(reqPath) == "/" && uploadsHasBooks() {
+		nodes = append([]FileNode{{
+			Name:    utils.UploadsDisplayName,
+			Path:    "/" + utils.UploadsPathPrefix,
+			IsDir:   true,
+			Size:    0,
+			ModTime: time.Now().UnixMilli(),
+		}}, nodes...)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"current_path": reqPath,
+		"items":        nodes,
+	})
+}
+
+// collectBookNodes 把目录条目转换为 FileNode：过滤隐藏项，非目录仅保留受支持的电子书格式。
+// relRoot 为相对路径计算基准，pathPrefix 为返回路径统一附加的虚拟前缀（上传目录用）。
+func collectBookNodes(entries []os.DirEntry, targetDir, relRoot, pathPrefix string) []FileNode {
+	var nodes []FileNode
 	for _, entry := range entries {
 		name := entry.Name()
 		// 忽略隐藏文件及文件夹（.DS_Store, .git, .trashBin 等）
@@ -95,17 +131,13 @@ func BrowseDirectory(c *gin.Context) {
 			continue
 		}
 
-		// 计算相对于 NAS 根目录的标准相对路径
-		relPath, relErr := filepath.Rel(nasRoot, fullEntryPath)
+		relPath, relErr := filepath.Rel(relRoot, fullEntryPath)
 		if relErr != nil {
 			continue
 		}
 
 		// 统一斜杠分隔符，确保多平台与前端路径一致
-		standardRelPath := filepath.ToSlash(relPath)
-		if !strings.HasPrefix(standardRelPath, "/") {
-			standardRelPath = "/" + standardRelPath
-		}
+		standardRelPath := pathPrefix + "/" + filepath.ToSlash(relPath)
 
 		if entry.IsDir() {
 			nodes = append(nodes, FileNode{
@@ -117,27 +149,40 @@ func BrowseDirectory(c *gin.Context) {
 			})
 		} else {
 			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
-			// 只过滤展示支持的电子书格式
 			if IsSupportedBookExt(ext) {
-				bookID := GenerateFastFileFingerprint(fullEntryPath, info.Size())
-
 				nodes = append(nodes, FileNode{
 					Name:      name,
 					Path:      standardRelPath,
 					IsDir:     false,
 					Size:      info.Size(),
 					Extension: ext,
-					BookID:    bookID,
+					BookID:    GenerateFastFileFingerprint(fullEntryPath, info.Size()),
 					ModTime:   info.ModTime().UnixMilli(),
 				})
 			}
 		}
 	}
+	return nodes
+}
 
-	c.JSON(http.StatusOK, gin.H{
-		"current_path": reqPath,
-		"items":        nodes,
+// uploadsHasBooks 判断上传目录内是否至少有一本受支持的电子书
+func uploadsHasBooks() bool {
+	root := utils.GetUploadsRootDir()
+	found := false
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			return nil
+		}
+		if IsSupportedBookExt(strings.TrimPrefix(filepath.Ext(d.Name()), ".")) {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
 	})
+	return found
 }
 
 // DownloadFile 安全下载电子书文件
@@ -153,8 +198,8 @@ func DownloadFile(c *gin.Context) {
 		return
 	}
 
-	// 1. 使用 safe_path 校验并解析目标绝对路径
-	targetFilePath, err := utils.SafeResolvePath(relPath)
+	// 1. 使用 safe_path 校验并解析目标绝对路径（自动区分 NAS 书库与上传目录）
+	targetFilePath, _, err := utils.ResolveLibraryPath(relPath)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return

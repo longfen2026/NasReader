@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:nas_reader/core/book_fingerprint.dart';
 import 'package:nas_reader/core/book_format.dart';
 import 'package:nas_reader/core/network_client.dart';
@@ -937,6 +938,125 @@ class FileBrowserPageState extends State<FileBrowserPage> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
   }
 
+  /// 选择本地书籍并上传到后端 uploads 目录，成功后刷新当前目录
+  Future<void> _pickAndUploadBook() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: BookFormat.values.map((e) => e.name).toList(),
+      withData: false,
+    );
+    if (result == null || result.files.single.path == null) return;
+
+    final picked = File(result.files.single.path!);
+    final fileName = p.basename(picked.path);
+    final ext = p.extension(fileName).toLowerCase();
+    if (BookFormat.fromExtension(ext) == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('暂不支持此格式，目前支持 ${BookFormat.labels}')),
+      );
+      return;
+    }
+
+    final ValueNotifier<double> uploadProgress = ValueNotifier<double>(0.0);
+    final CancelToken cancelToken = CancelToken();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: Dialog(
+          backgroundColor: Theme.of(context).cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: CircularProgressIndicator(strokeWidth: 3.5),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '正在上传《${p.basenameWithoutExtension(fileName)}》',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const SizedBox(height: 12),
+                ValueListenableBuilder<double>(
+                  valueListenable: uploadProgress,
+                  builder: (context, progress, _) => Column(
+                    children: [
+                      LinearProgressIndicator(
+                        value: progress > 0 ? progress : null,
+                        minHeight: 6,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        progress > 0
+                            ? '${(progress * 100).toStringAsFixed(1)}%'
+                            : '正在建立上传连接...',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    cancelToken.cancel('用户取消上传');
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('取消上传'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(picked.path, filename: fileName),
+      });
+
+      await _dio.post(
+        '/api/v1/files/upload',
+        data: formData,
+        cancelToken: cancelToken,
+        options: Options(sendTimeout: const Duration(minutes: 10)),
+        onSendProgress: (sent, total) {
+          if (total > 0) {
+            uploadProgress.value = (sent / total).clamp(0.0, 1.0);
+          }
+        },
+      );
+
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已上传《${p.basenameWithoutExtension(fileName)}》')),
+      );
+      await _loadDirectory(_currentPath);
+    } catch (e) {
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      final isCanceled = e is DioException && CancelToken.isCancel(e);
+      if (!isCanceled && mounted) {
+        AppLogger.log('❌ 上传书籍失败: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRoot = _currentPath == '/' || _currentPath.isEmpty;
@@ -979,6 +1099,11 @@ class FileBrowserPageState extends State<FileBrowserPage> {
             )
           : null,
       actions: [
+        IconButton(
+          icon: const Icon(Icons.upload_file),
+          tooltip: '上传本地书籍',
+          onPressed: _pickAndUploadBook,
+        ),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: '搜索整个书库',

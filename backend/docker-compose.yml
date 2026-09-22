@@ -17,8 +17,12 @@ services:
       - REGISTRATION_INVITE_CODE=${REGISTRATION_INVITE_CODE:-}
       - GIN_MODE=release
       - NAS_BOOKS_DIR=/nas/books
+      # 用户上传书籍的保存目录（需可写，与下方 volumes 挂载点保持一致）
+      - UPLOADS_DIR=/app/uploads
     volumes:
       # 挂载 SQLite 数据库持久化目录
       - ./data:/app/data
       # 将 NAS 上的书库只读挂载到容器内
       - /volume1/Books:/nas/books:ro
+      # 用户上传书籍的持久化目录（可写）
+      - ./uploads:/app/uploads
