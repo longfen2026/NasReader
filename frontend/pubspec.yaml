@@ -1,7 +1,7 @@
 name: nas_reader
 description: "A lightweight NAS e-book reader with multi-device sync."
 publish_to: 'none'
-version: 0.8.4-tailnet+85
+version: 0.8.5-tailnet+85
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
