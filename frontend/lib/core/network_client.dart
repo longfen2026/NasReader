@@ -127,6 +127,10 @@ class NetworkClient {
                 final retryOptions = error.requestOptions
                   ..baseUrl = sanitizeBaseUrl(transport.baseUrl)
                   ..extra[_tailnetRetryFlag] = true;
+                // FormData 一经发送即被 finalize，重试必须换用克隆体，否则报 already finalized
+                if (retryOptions.data is FormData) {
+                  retryOptions.data = (retryOptions.data as FormData).clone();
+                }
                 try {
                   return handler.resolve(await dio.fetch(retryOptions));
                 } on DioException catch (retryError) {
