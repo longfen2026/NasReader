@@ -23,8 +23,9 @@
 
 ### 书库与同步
 
+* **多存储后端**：通过 `STORAGE_BACKEND` 在**本地文件系统**与 **WebDAV** 之间切换。WebDAV 模式下服务启动时全量缓存书库目录结构（仅路径与文件信息，不下载书籍），之后按需在打开目录时单层刷新对应缓存。
 * **NAS 目录直连**：递归浏览目录树，隐藏文件自动过滤，按扩展名识别 TXT / EPUB / MOBI / PDF。
-* **文件指纹识别**：服务端为每个文件生成稳定 `book_id`（首尾哈希 + 体积），跨设备定位同一本书，不依赖文件路径。
+* **文件指纹识别**：服务端为每个文件生成稳定 `book_id`，跨设备定位同一本书，不依赖文件路径。本地后端使用首尾哈希 + 体积；WebDAV 后端为避免下载书籍改用路径 + 体积哈希（同一后端内稳定，但两种后端间不互通）。
 * **进度同步**：百分比 + 定位符（TXT 字节偏移 / EPUB CFI），并记录来源设备。
 * **书签双向同步**：LWW（Last-Write-Wins）合并策略 + 软删除标记，避免多端互相覆盖。
 * **收藏夹云同步**：书架与 NAS 书库均可一键收藏，按账号绑定并跨设备同步；同样采用 LWW + 墓碑软删除（保留 30 天），离线可用、登录后自动合并，登出即清除本机副本。
@@ -58,6 +59,7 @@
 | MOBI 解包 | `kindle_unpack`（GPL-3.0） | MOBI/AZW/AZW3/KF8 → EPUB 纯 Dart 转换 |
 | PDF 渲染 | `flutter_pdfview` | Android `PdfRenderer` / iOS `PDFKit` 原生视图 |
 | 后端 | Go 1.22 / Gin 1.9 | 轻量 RESTful API |
+| 存储后端 | 本地 FS / WebDAV（`studio-b12/gowebdav`） | 环境变量切换；WebDAV 目录元数据内存缓存 |
 | 数据库 | SQLite（`glebarez/sqlite`）/ GORM | 纯 Go 驱动无 CGO，WAL 模式 |
 | 鉴权 | `golang-jwt/v5` + `bcrypt` | — |
 | CI/CD | GitHub Actions | APK 签名构建 + `linux/amd64,linux/arm64` 镜像推送 ghcr.io |
@@ -103,6 +105,7 @@ NasReader/
 │   ├── handlers/                    # auth / storage / progress / bookmark / favorite / delete
 │   ├── middleware/                  # auth.go（JWT）、ratelimit.go（登录限流）
 │   ├── models/                      # user / progress / bookmark / favorite
+│   ├── storage/                     # 存储抽象层：backend 接口 / local / webdav（含缓存）/ fingerprint
 │   ├── utils/safe_path.go           # 路径穿越防护
 │   ├── Dockerfile                   # 多阶段静态编译 → alpine
 │   ├── docker-compose.yml
@@ -134,12 +137,20 @@ NasReader/
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
 | `JWT_SECRET` | ✅ | JWT 签名密钥，至少 32 字节；缺失或过短时服务拒绝启动。生成：`openssl rand -base64 48` |
-| `NAS_BOOKS_DIR` | 建议 | 书库物理根目录，默认 `/nas/books`；所有文件访问被限制在此目录内 |
+| `STORAGE_BACKEND` | — | 存储后端：`local`（默认）或 `webdav`；未知值回退本地 |
+| `NAS_BOOKS_DIR` | 建议 | 本地后端书库物理根目录，默认 `/nas/books`；所有文件访问被限制在此目录内 |
+| `UPLOADS_DIR` | — | 本地后端用户上传书籍目录，默认 `/app/uploads`（需可写） |
+| `WEBDAV_URL` | WebDAV 必填 | WebDAV 服务地址；`STORAGE_BACKEND=webdav` 时必填 |
+| `WEBDAV_USER` / `WEBDAV_PASSWORD` | — | WebDAV 认证凭据 |
+| `WEBDAV_BOOKS_PATH` | — | WebDAV 上书库根路径，默认 `/books` |
+| `WEBDAV_UPLOADS_PATH` | — | WebDAV 上用户上传书籍根路径，默认 `/uploads` |
 | `REGISTRATION_INVITE_CODE` | — | 注册邀请码。**留空则完全关闭注册接口**，建议长度 ≥ 8 |
 | `CORS_ALLOWED_ORIGINS` | — | 逗号分隔的浏览器来源白名单；留空则拒绝所有跨域请求 |
 | `GIN_MODE` | — | 生产环境设为 `release` |
 
 数据库文件固定生成在工作目录下的 `data/reader.db`，容器部署需挂载该目录以持久化。
+
+> 使用 WebDAV 后端时，书库与上传目录均存储在远端 WebDAV 上，本地 `NAS_BOOKS_DIR` / `UPLOADS_DIR` 挂载不再生效。服务启动会异步全量缓存目录结构（不阻塞启动、不下载书籍内容）。
 
 #### Docker Compose（推荐）
 

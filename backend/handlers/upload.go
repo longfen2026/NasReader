@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"io"
-	"mime/multipart"
 	"net/http"
-	"os"
 	"path/filepath"
+	"reader-sync/storage"
 	"reader-sync/utils"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,7 +14,7 @@ import (
 // maxUploadSize 单本书籍上传的体积上限，防止超大文件塞满 NAS
 const maxUploadSize = 512 << 20 // 512 MiB
 
-// UploadBook 接收前端上传的电子书并保存到 UPLOADS_DIR。
+// UploadBook 接收前端上传的电子书并保存到上传目录（底层存储由 storage.Backend 决定）。
 // 文件名经过消毒，仅允许受支持的电子书格式，重名自动追加序号避免覆盖。
 func UploadBook(c *gin.Context) {
 	// 限制请求体尺寸，抵御超大 body 造成的内存/磁盘耗尽
@@ -44,27 +43,34 @@ func UploadBook(c *gin.Context) {
 		return
 	}
 
-	uploadsRoot := utils.GetUploadsRootDir()
-	if err := os.MkdirAll(uploadsRoot, 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法创建上传目录: " + err.Error()})
+	backend := storage.Get()
+
+	// 在上传目录下选一个不冲突的逻辑路径（重名追加序号）
+	relPath, err := uniqueUploadRelPath(backend, safeName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法确定保存路径: " + err.Error()})
 		return
 	}
 
-	destPath := uniqueDestPath(uploadsRoot, safeName)
+	src, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法读取上传流: " + err.Error()})
+		return
+	}
+	defer src.Close()
 
-	if err := saveUploadedFile(fileHeader, destPath); err != nil {
+	if err := backend.Create(relPath, src); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败: " + err.Error()})
 		return
 	}
 
-	info, err := os.Stat(destPath)
+	info, err := backend.Stat(relPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取已保存文件失败"})
 		return
 	}
 
-	name := filepath.Base(destPath)
-	relPath := "/" + utils.UploadsPathPrefix + "/" + name
+	name := filepath.Base(utils.NormalizeRelPath(relPath))
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -74,10 +80,10 @@ func UploadBook(c *gin.Context) {
 			Name:      name,
 			Path:      relPath,
 			IsDir:     false,
-			Size:      info.Size(),
+			Size:      info.Size,
 			Extension: ext,
-			BookID:    GenerateFastFileFingerprint(destPath, info.Size()),
-			ModTime:   info.ModTime().UnixMilli(),
+			BookID:    backend.Fingerprint(relPath, info.Size),
+			ModTime:   info.ModTime.UnixMilli(),
 		},
 	})
 }
@@ -94,26 +100,21 @@ func sanitizeUploadFileName(raw string) string {
 	return name
 }
 
-// saveUploadedFile 把 multipart 文件流写入目标路径（O_EXCL 防止竞争覆盖）
-func saveUploadedFile(fh *multipart.FileHeader, dest string) error {
-	src, err := fh.Open()
-	if err != nil {
-		return err
-	}
-	defer src.Close()
+// uniqueUploadRelPath 在上传目录内寻找一个尚不存在的逻辑路径，重名时追加 (n) 序号。
+func uniqueUploadRelPath(backend storage.Backend, name string) (string, error) {
+	prefix := "/" + utils.UploadsPathPrefix + "/"
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
 
-	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return err
+	candidate := prefix + name
+	for i := 1; ; i++ {
+		exists, err := backend.Exists(candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+		candidate = prefix + base + "(" + strconv.Itoa(i) + ")" + ext
 	}
-	if _, err := io.Copy(out, src); err != nil {
-		out.Close()
-		os.Remove(dest)
-		return err
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(dest)
-		return err
-	}
-	return nil
 }
