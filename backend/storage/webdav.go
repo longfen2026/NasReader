@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -39,8 +40,21 @@ func newWebdavBackend() (*webdavBackend, error) {
 
 	client := gowebdav.NewClient(url, user, pass)
 	client.SetTimeout(30 * time.Second)
+
+	// gowebdav 默认使用 NewAutoAuth，依赖服务端在响应里返回 Www-Authenticate 挑战头
+	// 才能协商出 Basic/Digest。但 Connect() 用 OPTIONS 探测，很多 WebDAV 服务器
+	// （nginx dav、Apache mod_dav、Synology 等）对 OPTIONS 不返回挑战头，或本就要求
+	// 抢占式 Basic 认证，导致协商失败并直接返回 401。
+	// 这里在提供了凭据时预先带上 Authorization 头，覆盖最常见的 Basic 认证场景。
+	if user != "" {
+		token := base64.StdEncoding.EncodeToString([]byte(user + ":" + pass))
+		client.SetHeader("Authorization", "Basic "+token)
+	} else {
+		log.Printf("WebDAV 警告: 未设置 WEBDAV_USER，将以匿名方式连接，若服务器需要认证会返回 401")
+	}
+
 	if err := client.Connect(); err != nil {
-		return nil, fmt.Errorf("连接 WebDAV 失败: %w", err)
+		return nil, fmt.Errorf("连接 WebDAV 失败（请核对 WEBDAV_URL/WEBDAV_USER/WEBDAV_PASSWORD，并确认服务器支持 Basic 认证）: %w", err)
 	}
 
 	b := &webdavBackend{
