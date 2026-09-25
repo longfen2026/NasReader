@@ -60,6 +60,7 @@ func corsMiddleware() gin.HandlerFunc {
 func main() {
 	middleware.InitJwtSecret()
 	handlers.InitInviteCode()
+	handlers.InitUploadAdminToken()
 	config.InitDB()
 
 	// 初始化书库存储后端（本地文件系统），由环境变量 STORAGE_BACKEND 决定
@@ -127,6 +128,23 @@ func main() {
 			fileGroup.POST("/trash", handlers.MoveToTrash)
 			fileGroup.POST("/trash/restore", handlers.RestoreFromTrash)
 			fileGroup.POST("/trash/refresh", handlers.RefreshTrashBin)
+		}
+	}
+
+	// Web 上传/文件管理页面：仅在配置了 UPLOAD_ADMIN_TOKEN 时才注册路由，
+	// 未配置时整个页面与接口都不存在（返回 404），做到“未设置则不开放”。
+	if handlers.UploadAdminEnabled() {
+		r.GET("/uploadbooks", handlers.UploadAdminPage)
+		uploadAdmin := r.Group("/uploadbooks/api")
+		uploadAdmin.Use(handlers.UploadAdminAuth())
+		{
+			uploadAdmin.GET("/verify", handlers.UploadAdminVerifyToken)
+			uploadAdmin.GET("/list", handlers.UploadAdminList)
+			uploadAdmin.POST("/upload", handlers.UploadAdminUpload)
+			uploadAdmin.POST("/mkdir", handlers.UploadAdminMkdir)
+			uploadAdmin.POST("/delete", handlers.UploadAdminDelete)
+			uploadAdmin.POST("/rename", handlers.UploadAdminRename)
+			uploadAdmin.POST("/extract", handlers.UploadAdminExtract)
 		}
 	}
 

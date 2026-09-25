@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>书库上传</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f2430;
+    --border: #2a3040;
+    --text: #e6e9ef;
+    --muted: #9aa4b2;
+    --accent: #4f8cff;
+    --accent-2: #3b6fd6;
+    --danger: #e5484d;
+    --ok: #46a758;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+  }
+  .hidden { display: none !important; }
+  /* 登录 */
+  #login {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  }
+  .login-card {
+    width: 360px; max-width: 90vw; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 12px; padding: 28px;
+  }
+  .login-card h1 { margin: 0 0 4px; font-size: 20px; }
+  .login-card p { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .field label { color: var(--muted); font-size: 12px; }
+  input[type="text"], input[type="password"] {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  button {
+    cursor: pointer; border: none; border-radius: 8px; padding: 9px 14px;
+    font-size: 14px; color: #fff; background: var(--accent);
+  }
+  button:hover { background: var(--accent-2); }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  button.ghost:hover { background: var(--panel-2); }
+  button.danger { background: var(--danger); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .msg { font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .msg.err { color: var(--danger); }
+  .msg.ok { color: var(--ok); }
+  /* 主界面 */
+  #app { display: none; flex-direction: column; height: 100vh; }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header .title { font-weight: 600; }
+  header .spacer { flex: 1; }
+  .toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  .crumbs { display: flex; align-items: center; gap: 4px; padding: 8px 16px; color: var(--muted); flex-wrap: wrap; }
+  .crumbs a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .crumbs span.sep { color: var(--border); }
+  main { flex: 1; overflow: auto; padding: 0 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--bg); }
+  tr:hover td { background: var(--panel); }
+  .name-cell { display: flex; align-items: center; gap: 8px; }
+  .name-cell .link { color: var(--text); cursor: pointer; }
+  .name-cell .link.dir { color: var(--accent); font-weight: 500; }
+  .icon { width: 18px; text-align: center; }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+  .badge.unsupported { color: var(--danger); border-color: var(--danger); }
+  .actions { display: flex; gap: 6px; }
+  .actions button { padding: 4px 8px; font-size: 12px; }
+  .size, .time { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  #dropzone { position: relative; }
+  #dropzone.dragover::after {
+    content: "松开以上传到当前目录"; position: fixed; inset: 0; z-index: 50;
+    background: rgba(79,140,255,0.12); border: 2px dashed var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--accent);
+  }
+  #status { padding: 6px 16px; font-size: 12px; color: var(--muted); min-height: 22px; border-top: 1px solid var(--border); background: var(--panel); }
+  #status.err { color: var(--danger); }
+  #status.ok { color: var(--ok); }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+  <!-- 登录 -->
+  <div id="login">
+    <div class="login-card">
+      <h1>书库上传</h1>
+      <p>请输入访问令牌以进入文件管理器。</p>
+      <div class="field">
+        <label for="token">访问令牌</label>
+        <input id="token" type="password" placeholder="UPLOAD_ADMIN_TOKEN" autocomplete="off" />
+      </div>
+      <button id="loginBtn" style="width:100%">进入</button>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="app">
+    <header>
+      <span class="title">📚 书库文件管理器</span>
+      <span class="spacer"></span>
+      <button class="ghost" id="logoutBtn">退出</button>
+    </header>
+    <div class="toolbar">
+      <button id="uploadFilesBtn">上传文件</button>
+      <button id="uploadDirBtn">上传目录</button>
+      <button class="ghost" id="mkdirBtn">新建文件夹</button>
+      <button class="ghost" id="refreshBtn">刷新</button>
+      <input id="fileInput" type="file" multiple class="hidden" />
+      <input id="dirInput" type="file" webkitdirectory directory multiple class="hidden" />
+    </div>
+    <div class="crumbs" id="crumbs"></div>
+    <main id="dropzone">
+      <table>
+        <thead>
+          <tr><th>名称</th><th>大小</th><th>修改时间</th><th style="width:220px">操作</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty" class="empty hidden">此目录为空</div>
+    </main>
+    <div id="status"></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  var TOKEN = "";
+  var cwd = "/";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var loginView = $("login"), appView = $("app");
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    opts.headers["X-Upload-Token"] = TOKEN;
+    return fetch(path, opts);
+  }
+
+  function setStatus(text, kind) {
+    var el = $("status");
+    el.textContent = text || "";
+    el.className = kind || "";
+  }
+
+  function fmtSize(n) {
+    if (n == null) return "";
+    var u = ["B", "KB", "MB", "GB"], i = 0, v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return (i === 0 ? v : v.toFixed(1)) + " " + u[i];
+  }
+  function fmtTime(ms) {
+    if (!ms) return "";
+    var d = new Date(ms);
+    var p = function (x) { return (x < 10 ? "0" : "") + x; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // 登录
+  function doLogin() {
+    var val = $("token").value.trim();
+    if (!val) { showLoginMsg("请输入令牌", "err"); return; }
+    TOKEN = val;
+    $("loginBtn").disabled = true;
+    api("/uploadbooks/api/verify").then(function (r) {
+      $("loginBtn").disabled = false;
+      if (r.ok) { enterApp(); }
+      else { TOKEN = ""; showLoginMsg("令牌无效", "err"); }
+    }).catch(function () {
+      $("loginBtn").disabled = false; TOKEN = "";
+      showLoginMsg("无法连接服务器", "err");
+    });
+  }
+  function showLoginMsg(t, k) { var m = $("loginMsg"); m.textContent = t; m.className = "msg " + (k || ""); }
+  function enterApp() {
+    loginView.classList.add("hidden");
+    appView.style.display = "flex";
+    cwd = "/";
+    loadDir(cwd);
+  }
+  function logout() {
+    TOKEN = "";
+    appView.style.display = "none";
+    loginView.classList.remove("hidden");
+    $("token").value = "";
+    showLoginMsg("", "");
+  }
+
+  // 面包屑
+  function renderCrumbs() {
+    var el = $("crumbs");
+    el.innerHTML = "";
+    var parts = cwd.split("/").filter(Boolean);
+    var acc = "/";
+    var root = document.createElement("a");
+    root.textContent = "书库根";
+    root.onclick = function () { loadDir("/"); };
+    el.appendChild(root);
+    parts.forEach(function (p) {
+      acc = acc === "/" ? "/" + p : acc + "/" + p;
+      var sep = document.createElement("span"); sep.className = "sep"; sep.textContent = " / ";
+      el.appendChild(sep);
+      var a = document.createElement("a"); a.textContent = p;
+      var target = acc;
+      a.onclick = function () { loadDir(target); };
+      el.appendChild(a);
+    });
+  }
+
+  // 列目录
+  function loadDir(p) {
+    cwd = p || "/";
+    setStatus("加载中…");
+    renderCrumbs();
+    api("/uploadbooks/api/list?path=" + encodeURIComponent(cwd)).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    }).then(function (res) {
+      if (!res.ok) { setStatus(res.d.error || "加载失败", "err"); return; }
+      renderRows(res.d.items || []);
+      setStatus("");
+    }).catch(function () { setStatus("加载失败", "err"); });
+  }
+
+  function renderRows(items) {
+    var tbody = $("rows");
+    tbody.innerHTML = "";
+    items.sort(function (a, b) {
+      if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    $("empty").classList.toggle("hidden", items.length > 0);
+    items.forEach(function (it) {
+      var tr = document.createElement("tr");
+
+      var nameTd = document.createElement("td");
+      var cell = document.createElement("div"); cell.className = "name-cell";
+      var icon = document.createElement("span"); icon.className = "icon";
+      icon.textContent = it.is_dir ? "📁" : (it.is_archive ? "🗜️" : "📄");
+      cell.appendChild(icon);
+      var link = document.createElement("span");
+      link.className = "link" + (it.is_dir ? " dir" : "");
+      link.textContent = it.name;
+      if (it.is_dir) link.onclick = function () { loadDir(it.path); };
+      cell.appendChild(link);
+      if (!it.is_dir && !it.supported && !it.is_archive) {
+        var b = document.createElement("span"); b.className = "badge unsupported"; b.textContent = "不支持";
+        cell.appendChild(b);
+      }
+      nameTd.appendChild(cell);
+      tr.appendChild(nameTd);
+
+      var sizeTd = document.createElement("td"); sizeTd.className = "size";
+      sizeTd.textContent = it.is_dir ? "" : fmtSize(it.size);
+      tr.appendChild(sizeTd);
+
+      var timeTd = document.createElement("td"); timeTd.className = "time";
+      timeTd.textContent = fmtTime(it.mod_time);
+      tr.appendChild(timeTd);
+
+      var actTd = document.createElement("td");
+      var act = document.createElement("div"); act.className = "actions";
+      if (it.is_archive) {
+        var ex = document.createElement("button"); ex.textContent = "解压";
+        ex.onclick = function () { doExtract(it.path); };
+        act.appendChild(ex);
+      }
+      var rn = document.createElement("button"); rn.className = "ghost"; rn.textContent = "重命名";
+      rn.onclick = function () { doRename(it); };
+      act.appendChild(rn);
+      var mv = document.createElement("button"); mv.className = "ghost"; mv.textContent = "移动";
+      mv.onclick = function () { doMove(it); };
+      act.appendChild(mv);
+      var del = document.createElement("button"); del.className = "danger"; del.textContent = "删除";
+      del.onclick = function () { doDelete(it); };
+      act.appendChild(del);
+      actTd.appendChild(act);
+      tr.appendChild(actTd);
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 上传
+  function uploadFileList(files, useRelPath) {
+    if (!files || !files.length) return;
+    var fd = new FormData();
+    fd.append("path", cwd);
+    var count = 0;
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      fd.append("files", f, f.name);
+      var rel = useRelPath ? (f.webkitRelativePath || f.name) : f.name;
+      fd.append("paths", rel);
+      count++;
+    }
+    setStatus("上传中（" + count + " 个文件）…");
+    api("/uploadbooks/api/upload", { method: "POST", body: fd }).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    }).then(function (res) {
+      if (!res.ok) { setStatus(res.d.error || "上传失败", "err"); return; }
+      setStatus("上传完成：成功 " + res.d.saved + " 个，过滤 " + res.d.skipped + " 个", "ok");
+      loadDir(cwd);
+    }).catch(function () { setStatus("上传失败", "err"); });
+  }
+
+  function doMkdir() {
+    var name = prompt("新建文件夹名称：");
+    if (!name) return;
+    api("/uploadbooks/api/mkdir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: cwd, name: name })
+    }).then(handleMutation("已创建"));
+  }
+
+  function doDelete(it) {
+    if (!confirm("确定删除 “" + it.name + "”" + (it.is_dir ? "（含其中全部内容）" : "") + "？")) return;
+    api("/uploadbooks/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: it.path })
+    }).then(handleMutation("已删除"));
+  }
+
+  function doRename(it) {
+    var name = prompt("重命名为：", it.name);
+    if (!name || name === it.name) return;
+    var parent = it.path.slice(0, it.path.lastIndexOf("/")) || "/";
+    var to = (parent === "/" ? "/" : parent + "/") + name;
+    api("/uploadbooks/api/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: it.path, to: to })
+    }).then(handleMutation("已重命名"));
+  }
+
+  function doMove(it) {
+    var dest = prompt("移动到目录（相对书库根，如 /科幻）：", cwd);
+    if (dest == null) return;
+    dest = dest.trim() || "/";
+    var to = (dest === "/" ? "/" : dest.replace(/\/$/, "") + "/") + it.name;
+    api("/uploadbooks/api/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: it.path, to: to })
+    }).then(handleMutation("已移动"));
+  }
+
+  function doExtract(p) {
+    setStatus("解压中…");
+    api("/uploadbooks/api/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: p })
+    }).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    }).then(function (res) {
+      if (!res.ok) { setStatus(res.d.error || "解压失败", "err"); return; }
+      setStatus("解压完成：提取 " + res.d.extracted + " 个，过滤 " + res.d.skipped + " 个", "ok");
+      loadDir(cwd);
+    }).catch(function () { setStatus("解压失败", "err"); });
+  }
+
+  function handleMutation(okText) {
+    return function (r) {
+      r.json().then(function (d) {
+        if (r.ok) { setStatus(okText, "ok"); loadDir(cwd); }
+        else { setStatus(d.error || "操作失败", "err"); }
+      });
+    };
+  }
+
+  // 拖拽上传
+  function setupDnd() {
+    var dz = $("dropzone");
+    ["dragenter", "dragover"].forEach(function (ev) {
+      dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add("dragover"); });
+    });
+    ["dragleave", "drop"].forEach(function (ev) {
+      dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove("dragover"); });
+    });
+    dz.addEventListener("drop", function (e) {
+      if (e.dataTransfer && e.dataTransfer.files) uploadFileList(e.dataTransfer.files, false);
+    });
+  }
+
+  // 事件绑定
+  $("loginBtn").onclick = doLogin;
+  $("token").addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
+  $("logoutBtn").onclick = logout;
+  $("refreshBtn").onclick = function () { loadDir(cwd); };
+  $("mkdirBtn").onclick = doMkdir;
+  $("uploadFilesBtn").onclick = function () { $("fileInput").click(); };
+  $("uploadDirBtn").onclick = function () { $("dirInput").click(); };
+  $("fileInput").onchange = function (e) { uploadFileList(e.target.files, false); e.target.value = ""; };
+  $("dirInput").onchange = function (e) { uploadFileList(e.target.files, true); e.target.value = ""; };
+  setupDnd();
+})();
+</script>
+</body>
+</html>

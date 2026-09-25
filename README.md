@@ -37,6 +37,7 @@
 
 * **JWT 鉴权**：`JWT_SECRET` 未设置或短于 32 字节时服务拒绝启动。
 * **邀请码注册**：`REGISTRATION_INVITE_CODE` 留空即完全关闭注册接口；常量时间比对。
+* **Web 上传页面**：访问 `<host>:8080/uploadbooks` 打开浏览器端文件管理器，可上传书籍/目录、上传并解压 zip、以及重命名/移动/删除；由 `UPLOAD_ADMIN_TOKEN` 令牌控制，留空则整个页面不开放（404），令牌采用常量时间比对，非受支持格式自动过滤。
 * **登录限流**：内存计数器，15 分钟内失败 5 次锁定 15 分钟；用户不存在时执行等时哈希比对，抵御用户名枚举。
 * **路径穿越防护**：所有文件访问经 `SafeResolvePath` 校验，越界请求返回 403。
 * **CORS 白名单**：默认拒绝全部浏览器跨域请求，仅放行 `CORS_ALLOWED_ORIGINS` 显式配置的来源（原生客户端不受影响）。
@@ -140,6 +141,7 @@ NasReader/
 | `NAS_BOOKS_DIR` | 建议 | 书库物理根目录，默认 `/nas/books`；所有文件访问被限制在此目录内 |
 | `UPLOADS_DIR` | — | 用户上传书籍目录，默认 `/app/uploads`（需可写） |
 | `REGISTRATION_INVITE_CODE` | — | 注册邀请码。**留空则完全关闭注册接口**，建议长度 ≥ 8 |
+| `UPLOAD_ADMIN_TOKEN` | — | Web 上传/文件管理页面访问令牌（页面地址 `<host>:8080/uploadbooks`）。**留空则完全不开放该页面及接口（404）**，建议长度 ≥ 8 |
 | `CORS_ALLOWED_ORIGINS` | — | 逗号分隔的浏览器来源白名单；留空则拒绝所有跨域请求 |
 | `GIN_MODE` | — | 生产环境设为 `release` |
 
@@ -158,7 +160,7 @@ EOF
 docker compose up -d
 ```
 
-`docker-compose.yml` 默认将 `/volume1/Books` 只读挂载到容器内 `/nas/books`，按自己的 NAS 路径调整。也可直接使用 CI 推送的镜像：
+`docker-compose.yml` 默认将 `/volume1/Books` 挂载到容器内 `/nas/books`，按自己的 NAS 路径调整。若启用 Web 上传页面（`UPLOAD_ADMIN_TOKEN`），该挂载不能使用 `:ro` 只读模式，否则写操作会失败。也可直接使用 CI 推送的镜像：
 
 ```yaml
 image: ghcr.io/<owner>/<repo>/reader-sync:latest

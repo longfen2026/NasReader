@@ -15,6 +15,9 @@ services:
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       # 可选：注册邀请码。留空即完全关闭注册接口
       - REGISTRATION_INVITE_CODE=${REGISTRATION_INVITE_CODE:-}
+      # 可选：Web 上传/文件管理页面访问令牌（页面地址 <host>:8080/uploadbooks）。
+      # 留空即完全不开放该页面及其接口（返回 404）。建议使用 32+ 字节随机值。
+      - UPLOAD_ADMIN_TOKEN=${UPLOAD_ADMIN_TOKEN:-}
       - GIN_MODE=release
       - NAS_BOOKS_DIR=/nas/books
       # 用户上传书籍的保存目录（需可写，与下方 volumes 挂载点保持一致）
@@ -22,7 +25,9 @@ services:
     volumes:
       # 挂载 SQLite 数据库持久化目录
       - ./data:/app/data
-      # 将 NAS 上的书库只读挂载到容器内
-      - /volume1/Books:/nas/books:ro
+      # 将 NAS 上的书库挂载到容器内。
+      # 注意：若启用 Web 上传页面（UPLOAD_ADMIN_TOKEN），此处不能使用 :ro 只读挂载，
+      # 否则上传/新建/移动/删除/解压等写操作会失败。
+      - /volume1/Books:/nas/books
       # 用户上传书籍的持久化目录（可写）
       - ./uploads:/app/uploads
