@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../main_navigation_container.dart';
 import '../services/progress_sync_service.dart';
+import '../services/favorite_service.dart';
 import '../services/server_endpoint_service.dart';
 import '../services/server_profile_service.dart';
 import '../services/tailnet_transport_service.dart';
@@ -194,6 +195,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
 
+    final previousUrl = ServerProfileService.normalizeUrl(ApiConfig.baseUrl);
+
     try {
       // 先持久化逻辑端点，随后由登录请求按“局域网直连 -> Tailnet”处理。
       // 不能先做仅局域网的探测，否则外网首次登录会被错误阻断。
@@ -201,6 +204,13 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         primary: primaryUrl,
         tailnetTarget: tailnetTarget,
       );
+
+      // 切换到不同后端时清空本地书架数据，避免上一台服务器的阅读记录残留
+      if (primaryUrl.isNotEmpty && primaryUrl != previousUrl) {
+        await ProgressSyncService.clearAllLocal();
+        await FavoriteService.clearLocal();
+      }
+
       NetworkClient.reset();
       await ApiConfig.setBaseUrl(primaryUrl);
       await AuthService.saveBaseUrl(primaryUrl);

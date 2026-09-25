@@ -72,5 +72,29 @@ void main() {
       expect(prefs.getStringList(_shelfRemovedKey), isEmpty);
       expect(jsonDecode(prefs.getString(_progressKey)!), isEmpty);
     });
+
+    test('clearAllLocal 清空进度、书签与屏蔽标记', () async {
+      SharedPreferences.setMockInitialValues({
+        _progressKey: jsonEncode({
+          'fp-1': _progressEntry(bookId: 'fp-1'),
+          'fp-2': _progressEntry(bookId: 'fp-2'),
+        }),
+        _shelfRemovedKey: <String>['fp-3'],
+        'local_bookmarks_fp-1': <String>['{"id":"b1"}'],
+        'local_bookmarks_fp-2': <String>['{"id":"b2"}'],
+        'unrelated_key': 'keep-me',
+      });
+
+      await ProgressSyncService.clearAllLocal();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(_progressKey), isNull);
+      expect(prefs.getStringList(_shelfRemovedKey), isNull);
+      expect(prefs.getStringList('local_bookmarks_fp-1'), isNull);
+      expect(prefs.getStringList('local_bookmarks_fp-2'), isNull);
+      // 非书架相关的键不应被误删
+      expect(prefs.getString('unrelated_key'), 'keep-me');
+      expect(await ProgressSyncService.getAllLocalProgress(), isEmpty);
+    });
   });
 }

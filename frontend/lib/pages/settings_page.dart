@@ -7,6 +7,7 @@ import 'package:nas_reader/config/theme_manager.dart'; // 👈 引入 ThemeManag
 import 'package:nas_reader/core/network_client.dart';
 import 'package:nas_reader/services/auth_service.dart';
 import 'package:nas_reader/services/favorite_service.dart';
+import 'package:nas_reader/services/progress_sync_service.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
 import 'package:nas_reader/services/server_profile_service.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
@@ -1134,12 +1135,19 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
     final tailnetTarget = ServerEndpointService.normalizeTailnetTarget(
       _tailnetTargetController.text,
     );
+    final previous = ServerProfileService.normalizeUrl(ApiConfig.baseUrl);
 
     try {
       await ServerEndpointService.save(
         primary: primary,
         tailnetTarget: tailnetTarget,
       );
+
+      // 切换到不同后端时清空本地书架数据，避免上一台服务器的阅读记录残留
+      if (primary.isNotEmpty && primary != previous) {
+        await ProgressSyncService.clearAllLocal();
+        await FavoriteService.clearLocal();
+      }
 
       // 地址变更后必须重建 Dio，否则旧 baseUrl 会被单例继续复用
       NetworkClient.reset();

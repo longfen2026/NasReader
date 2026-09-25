@@ -220,6 +220,20 @@ class ProgressSyncService {
     return BookProgress.fromJson(map[bookId]);
   }
 
+  /// 切换到不同后端服务器时，清空本地书架相关数据（阅读进度、书签、书架移除标记），
+  /// 避免上一台服务器的阅读记录残留到新的空服务器上。
+  static Future<void> clearAllLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_storageKey);
+    await prefs.remove(_shelfRemovedKey);
+    final bookmarkKeys =
+        prefs.getKeys().where((k) => k.startsWith('local_bookmarks_')).toList();
+    for (final key in bookmarkKeys) {
+      await prefs.remove(key);
+    }
+    AppLogger.log('🧹 已清空本地书架数据（切换服务器）');
+  }
+
   /// 4. 获取本地所有阅读记录
   static Future<List<BookProgress>> getAllLocalProgress() async {
     final prefs = await SharedPreferences.getInstance();
