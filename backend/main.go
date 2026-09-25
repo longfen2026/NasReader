@@ -62,17 +62,9 @@ func main() {
 	handlers.InitInviteCode()
 	config.InitDB()
 
-	// 初始化书库存储后端（本地文件系统或 WebDAV），由环境变量 STORAGE_BACKEND 决定
+	// 初始化书库存储后端（本地文件系统），由环境变量 STORAGE_BACKEND 决定
 	if err := storage.Init(); err != nil {
 		log.Fatalf("初始化存储后端失败: %v", err)
-	}
-	// WebDAV 后端在启动时做一次全量目录缓存预热（仅缓存路径与文件信息，不下载书籍）
-	if p, ok := storage.Get().(storage.Preheater); ok {
-		go func() {
-			if err := p.Preheat(); err != nil {
-				log.Printf("存储后端预热失败: %v", err)
-			}
-		}()
 	}
 
 	handlers.AuthLimiter.StartCleanup(10 * time.Minute)

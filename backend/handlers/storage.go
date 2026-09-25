@@ -55,7 +55,7 @@ func BrowseDirectory(c *gin.Context) {
 	inUploads := utils.IsUploadsPath(reqPath)
 	backend := storage.Get()
 
-	// 浏览垃圾箱时按需创建，避免首次进入报 404（仅本地后端需要，WebDAV 由远端自身处理）
+	// 浏览垃圾箱时按需创建，避免首次进入报 404
 	if utils.NormalizeRelPath(reqPath) == "/"+utils.TrashBinDirName {
 		_ = backend.MkdirAll("/" + utils.TrashBinDirName)
 	}

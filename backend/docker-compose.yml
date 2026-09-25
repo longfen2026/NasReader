@@ -19,17 +19,6 @@ services:
       - NAS_BOOKS_DIR=/nas/books
       # 用户上传书籍的保存目录（需可写，与下方 volumes 挂载点保持一致）
       - UPLOADS_DIR=/app/uploads
-      # ---- 存储后端选择 ----
-      # STORAGE_BACKEND: local(默认，使用上面的本地挂载目录) 或 webdav
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
-      # 以下 WEBDAV_* 仅在 STORAGE_BACKEND=webdav 时生效
-      - WEBDAV_URL=${WEBDAV_URL:-}
-      - WEBDAV_USER=${WEBDAV_USER:-}
-      - WEBDAV_PASSWORD=${WEBDAV_PASSWORD:-}
-      # WebDAV 上书库根目录（默认 /books）
-      - WEBDAV_BOOKS_PATH=${WEBDAV_BOOKS_PATH:-/books}
-      # WebDAV 上用户上传书籍根目录（默认 /uploads）
-      - WEBDAV_UPLOADS_PATH=${WEBDAV_UPLOADS_PATH:-/uploads}
     volumes:
       # 挂载 SQLite 数据库持久化目录
       - ./data:/app/data

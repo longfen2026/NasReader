@@ -35,11 +35,3 @@ func fastFileFingerprint(filePath string, size int64) string {
 	hasher.Write([]byte(fmt.Sprintf("%d", size)))
 	return hex.EncodeToString(hasher.Sum(nil))
 }
-
-// pathSizeFingerprint WebDAV 后端指纹：SHA256(逻辑相对路径 + 大小)，不下载文件内容（方案 A）。
-func pathSizeFingerprint(relPath string, size int64) string {
-	hasher := sha256.New()
-	hasher.Write([]byte(relPath))
-	hasher.Write([]byte(fmt.Sprintf("|%d", size)))
-	return hex.EncodeToString(hasher.Sum(nil))
-}

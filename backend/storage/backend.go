@@ -1,4 +1,4 @@
-// Package storage 抽象书库的底层存储，屏蔽本地文件系统与 WebDAV 的差异。
+// Package storage 抽象书库的底层存储，屏蔽本地文件系统的差异。
 // 所有方法都以“逻辑相对路径”为入参，例如 /科幻/三体.epub、/__uploads__/x.epub、/.trashBin/y.epub，
 // 各后端各自负责把逻辑路径映射到真实的物理路径或远端路径。
 package storage
@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strings"
 	"sync"
 	"time"
 )
@@ -51,42 +50,20 @@ type Backend interface {
 	Fingerprint(relPath string, size int64) string
 }
 
-// Preheater 由需要启动预热的后端（如 WebDAV）可选实现，main 在启动时检测并触发。
-type Preheater interface {
-	// Preheat 在服务启动时全量缓存书库目录结构（仅路径与文件信息，不下载书籍）。
-	Preheat() error
-}
-
 var (
 	current Backend
 	initMu  sync.Mutex
 )
 
 // Init 根据环境变量选择并初始化存储后端，由 main 在启动时调用。
-// STORAGE_BACKEND=local（默认）使用本地文件系统；=webdav 使用 WebDAV。
+// 目前仅支持本地文件系统后端。
 func Init() error {
 	initMu.Lock()
 	defer initMu.Unlock()
 
-	kind := strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_BACKEND")))
-	switch kind {
-	case "", "local":
-		current = newLocalBackend()
-		log.Println("存储后端：本地文件系统")
-		return nil
-	case "webdav":
-		b, err := newWebdavBackend()
-		if err != nil {
-			return err
-		}
-		current = b
-		log.Println("存储后端：WebDAV")
-		return nil
-	default:
-		log.Printf("未知 STORAGE_BACKEND=%q，回退到本地文件系统", kind)
-		current = newLocalBackend()
-		return nil
-	}
+	current = newLocalBackend()
+	log.Println("存储后端：本地文件系统")
+	return nil
 }
 
 // Get 返回当前存储后端；若尚未初始化（如单元测试直接调用 handler），惰性回退为本地后端。
