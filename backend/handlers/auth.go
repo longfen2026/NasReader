@@ -117,7 +117,7 @@ func Register(c *gin.Context) {
 
 	AuthLimiter.Reset(clientKey)
 
-	token, _ := middleware.GenerateToken(user.ID, user.Username)
+	token, _ := middleware.GenerateToken(user.ID, user.Username, user.TokenVersion)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "User registered successfully",
 		"token":   token,
@@ -152,7 +152,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, err := middleware.GenerateToken(user.ID, user.Username)
+	token, err := middleware.GenerateToken(user.ID, user.Username, user.TokenVersion)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -170,7 +170,7 @@ func Login(c *gin.Context) {
 }
 
 // ChangePassword 修改当前登录用户的密码。
-// 注意：JWT 无状态，旧 Token 在过期前仍然有效，客户端需在成功后自行登出。
+// 改密后自增 TokenVersion 使所有旧 JWT 立即失效，并下发一枚新令牌供当前会话继续使用。
 func ChangePassword(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -208,12 +208,26 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := config.DB.Model(&user).Update("password", string(hashed)).Error; err != nil {
+	// 改密同时自增 TokenVersion，使包括本次请求所用令牌在内的所有旧 JWT 立即失效
+	if err := config.DB.Model(&user).Updates(map[string]interface{}{
+		"password":      string(hashed),
+		"token_version": user.TokenVersion + 1,
+	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码更新失败"})
 		return
 	}
 
 	AuthLimiter.Reset(clientKey)
 
-	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功，请重新登录"})
+	// 下发基于新版本号的令牌，客户端替换后可无缝继续，无需重新登录
+	newToken, err := middleware.GenerateToken(user.ID, user.Username, user.TokenVersion+1)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "密码修改成功，请重新登录"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "密码修改成功",
+		"token":   newToken,
+	})
 }

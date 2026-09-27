@@ -1358,13 +1358,19 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
     try {
       final dio = NetworkClient.getDio();
-      await dio.post(
+      final resp = await dio.post(
         '/api/v1/auth/password',
         data: {
           'oldPassword': _oldController.text,
           'newPassword': _newController.text,
         },
       );
+
+      // 后端改密后自增令牌版本使旧 Token 失效，并回传新 Token；替换后可无缝继续
+      final data = resp.data;
+      if (data is Map && data['token'] is String && (data['token'] as String).isNotEmpty) {
+        await AuthService.saveToken(data['token'] as String);
+      }
 
       // 旧密码已失效，清掉本地记住的密码避免自动填充错误凭证
       await ServerProfileService.clearPassword(ApiConfig.baseUrl);

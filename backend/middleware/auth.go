@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"reader-sync/config"
+	"reader-sync/models"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -15,8 +18,9 @@ import (
 const minJwtSecretLength = 32
 
 type Claims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
+	UserID       string `json:"user_id"`
+	Username     string `json:"username"`
+	TokenVersion int    `json:"token_version"`
 	jwt.RegisteredClaims
 }
 
@@ -42,11 +46,12 @@ func GetJwtSecret() []byte {
 	return jwtSecret
 }
 
-// GenerateToken 生成 7 天有效期的 JWT
-func GenerateToken(userID, username string) (string, error) {
+// GenerateToken 生成 7 天有效期的 JWT，tokenVersion 写入令牌用于后续吊销校验
+func GenerateToken(userID, username string, tokenVersion int) (string, error) {
 	claims := Claims{
-		UserID:   userID,
-		Username: username,
+		UserID:       userID,
+		Username:     username,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -80,6 +85,19 @@ func AuthMiddleware() gin.HandlerFunc {
 		claims, ok := token.Claims.(*Claims)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+			c.Abort()
+			return
+		}
+
+		// 比对令牌版本，改密等操作会自增 DB 中的 TokenVersion，令旧令牌立即失效
+		var user models.User
+		if err := config.DB.Select("token_version").Where("id = ?", claims.UserID).First(&user).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+			c.Abort()
+			return
+		}
+		if user.TokenVersion != claims.TokenVersion {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token has been revoked"})
 			c.Abort()
 			return
 		}

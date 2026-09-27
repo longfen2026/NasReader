@@ -15,7 +15,16 @@ FROM alpine:latest
 WORKDIR /app
 
 RUN apk --no-cache add ca-certificates tzdata
+
+# 创建非 root 用户运行服务，降低容器逃逸后的影响面
+RUN addgroup -S reader && adduser -S -G reader -H -u 10001 reader
+
 COPY --from=builder /app/reader-server .
+
+# 预建数据/上传目录并归属非 root 用户；宿主机挂载卷需保证同一 UID 可写
+RUN mkdir -p /app/data /app/uploads && chown -R reader:reader /app
+
+USER reader
 
 EXPOSE 8080
 CMD ["./reader-server"]
