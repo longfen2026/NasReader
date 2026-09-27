@@ -9,6 +9,7 @@ import 'package:nas_reader/pages/login_page.dart';
 import 'package:nas_reader/services/app_logger.dart';
 import 'package:nas_reader/services/auth_service.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
+import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -117,7 +118,8 @@ class NetworkClient {
           }
 
           // 局域网直连失败后，原生层会把 Tailnet 连接转为本机 TCP 转发。
-          if (_isConnectionFailure(error) &&
+          if (TailnetPrefs.enabledNotifier.value &&
+              _isConnectionFailure(error) &&
               error.requestOptions.extra[_tailnetRetryFlag] != true) {
             final endpoints = await ServerEndpointService.load();
             try {

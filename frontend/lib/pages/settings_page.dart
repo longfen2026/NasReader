@@ -10,6 +10,7 @@ import 'package:nas_reader/services/favorite_service.dart';
 import 'package:nas_reader/services/progress_sync_service.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
 import 'package:nas_reader/services/server_profile_service.dart';
+import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -647,7 +648,11 @@ class _AccountCenterPageState extends State<AccountCenterPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadEndpoints();
-    _loadTailnetStatus();
+    if (TailnetPrefs.enabledNotifier.value) {
+      _loadTailnetStatus();
+    } else {
+      _isLoadingTailnetStatus = false;
+    }
   }
 
   @override
@@ -658,7 +663,10 @@ class _AccountCenterPageState extends State<AccountCenterPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadTailnetStatus();
+    if (state == AppLifecycleState.resumed &&
+        TailnetPrefs.enabledNotifier.value) {
+      _loadTailnetStatus();
+    }
   }
 
   Future<void> _loadEndpoints() async {
@@ -913,130 +921,192 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                   fontWeight: FontWeight.bold,
                   color: Colors.grey)),
           const SizedBox(height: 8),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: Colors.grey.shade300),
-            ),
-            child: Column(
-              children: [
-                ValueListenableBuilder<ServerConnectionPath>(
-                  valueListenable: NetworkClient.connectionPath,
-                  builder: (context, path, _) {
-                    final isTailnet = path == ServerConnectionPath.tailnet;
-                    final target = _endpoints.hasTailnetTarget
-                        ? _endpoints.tailnetTarget
-                        : '未配置';
-                    return ListTile(
-                      leading: Icon(
-                        isTailnet ? Icons.hub_outlined : Icons.cloud_outlined,
-                        color: isTailnet ? Colors.teal : Colors.blueAccent,
+          ValueListenableBuilder<bool>(
+            valueListenable: TailnetPrefs.enabledNotifier,
+            builder: (context, tailnetEnabled, _) {
+              return Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      secondary: Icon(
+                        Icons.vpn_lock_outlined,
+                        color: tailnetEnabled
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey,
                       ),
-                      title: Text(
-                        isTailnet ? 'Tailnet 服务器' : '局域网服务器',
-                        style: const TextStyle(fontSize: 14),
+                      title:
+                          const Text('Tailnet 连接', style: TextStyle(fontSize: 14)),
+                      subtitle: const Text(
+                        '开启后可在局域网不可达时通过 Tailnet 访问',
+                        style: TextStyle(fontSize: 12),
                       ),
+                      value: tailnetEnabled,
+                      onChanged: (enabled) async {
+                        await TailnetPrefs.setEnabled(enabled);
+                        if (!mounted) return;
+                        if (enabled) {
+                          _loadTailnetStatus();
+                        } else {
+                          setState(() => _isLoadingTailnetStatus = false);
+                        }
+                      },
+                    ),
+                    const Divider(height: 1),
+                    if (tailnetEnabled)
+                      ValueListenableBuilder<ServerConnectionPath>(
+                        valueListenable: NetworkClient.connectionPath,
+                        builder: (context, path, _) {
+                          final isTailnet =
+                              path == ServerConnectionPath.tailnet;
+                          final target = _endpoints.hasTailnetTarget
+                              ? _endpoints.tailnetTarget
+                              : '未配置';
+                          return ListTile(
+                            leading: Icon(
+                              isTailnet
+                                  ? Icons.hub_outlined
+                                  : Icons.cloud_outlined,
+                              color:
+                                  isTailnet ? Colors.teal : Colors.blueAccent,
+                            ),
+                            title: Text(
+                              isTailnet ? 'Tailnet 服务器' : '局域网服务器',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            subtitle: Text(
+                              isTailnet
+                                  ? target
+                                  : ApiConfig.baseUrl.isNotEmpty
+                                      ? ApiConfig.baseUrl
+                                      : '未配置',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            trailing: Text(
+                              isTailnet ? 'Tailnet' : '直连',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isTailnet ? Colors.teal : null,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      ListTile(
+                        leading: const Icon(Icons.cloud_outlined,
+                            color: Colors.blueAccent),
+                        title: const Text('局域网服务器',
+                            style: TextStyle(fontSize: 14)),
+                        subtitle: Text(
+                          ApiConfig.baseUrl.isNotEmpty
+                              ? ApiConfig.baseUrl
+                              : '未配置',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: const Text(
+                          '直连',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.dns_outlined,
+                          color: Theme.of(context).colorScheme.primary),
+                      title: const Text('服务器地址配置',
+                          style: TextStyle(fontSize: 14)),
                       subtitle: Text(
-                        isTailnet
-                            ? target
-                            : ApiConfig.baseUrl.isNotEmpty
-                                ? ApiConfig.baseUrl
-                                : '未配置',
+                        tailnetEnabled
+                            ? '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
+                                'Tailnet：${_endpoints.hasTailnetTarget ? _endpoints.tailnetTarget : "未配置"}'
+                            : '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}',
                         style: const TextStyle(fontSize: 12),
                       ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _openServerEditor,
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.sync_lock_outlined,
+                          color: Colors.green),
+                      title: const Text('多端同步状态',
+                          style: TextStyle(fontSize: 14)),
                       trailing: Text(
-                        isTailnet ? 'Tailnet' : '直连',
+                        ApiConfig.isLoggedIn ? '已连接' : '未授权',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: isTailnet ? Colors.teal : null,
+                          color: ApiConfig.isLoggedIn
+                              ? Colors.green
+                              : Colors.redAccent,
                         ),
                       ),
-                    );
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.dns_outlined,
-                      color: Theme.of(context).colorScheme.primary),
-                  title: const Text('服务器地址配置', style: TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                    '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
-                    'Tailnet：${_endpoints.hasTailnetTarget ? _endpoints.tailnetTarget : "未配置"}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _openServerEditor,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading:
-                      const Icon(Icons.sync_lock_outlined, color: Colors.green),
-                  title: const Text('多端同步状态', style: TextStyle(fontSize: 14)),
-                  trailing: Text(
-                    ApiConfig.isLoggedIn ? '已连接' : '未授权',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: ApiConfig.isLoggedIn
-                          ? Colors.green
-                          : Colors.redAccent,
                     ),
-                  ),
+                    if (tailnetEnabled) ...[
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: Icon(
+                          Icons.vpn_key_outlined,
+                          color: _tailnetStatus?.isAuthorized == true
+                              ? Colors.green
+                              : Colors.orange,
+                        ),
+                        title: const Text('Tailscale 授权',
+                            style: TextStyle(fontSize: 14)),
+                        subtitle: Text(
+                          _isLoadingTailnetStatus
+                              ? '正在读取授权状态'
+                              : _tailnetStatus?.isAuthorized == true
+                                  ? '已授权，可在局域网直连失败时使用 Tailnet'
+                                  : '未授权、已过期或即将过期，请重新登录授权',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: _isLoadingTailnetStatus
+                            ? null
+                            : _tailnetStatus?.isAuthorized == true
+                                ? FilledButton.tonal(
+                                    onPressed: _isLoggingOutTailnet
+                                        ? null
+                                        : _logoutTailnet,
+                                    style: FilledButton.styleFrom(
+                                      foregroundColor: Colors.redAccent,
+                                    ),
+                                    child: _isLoggingOutTailnet
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Text('注销'),
+                                  )
+                                : FilledButton.tonal(
+                                    onPressed: _isStartingTailnetAuthorization
+                                        ? null
+                                        : _startTailnetAuthorization,
+                                    child: _isStartingTailnetAuthorization
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Text('授权登录'),
+                                  ),
+                      ),
+                    ],
+                  ],
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(
-                    Icons.vpn_key_outlined,
-                    color: _tailnetStatus?.isAuthorized == true
-                        ? Colors.green
-                        : Colors.orange,
-                  ),
-                  title: const Text('Tailscale 授权',
-                      style: TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                    _isLoadingTailnetStatus
-                        ? '正在读取授权状态'
-                        : _tailnetStatus?.isAuthorized == true
-                            ? '已授权，可在局域网直连失败时使用 Tailnet'
-                            : '未授权、已过期或即将过期，请重新登录授权',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: _isLoadingTailnetStatus
-                      ? null
-                      : _tailnetStatus?.isAuthorized == true
-                          ? FilledButton.tonal(
-                              onPressed:
-                                  _isLoggingOutTailnet ? null : _logoutTailnet,
-                              style: FilledButton.styleFrom(
-                                foregroundColor: Colors.redAccent,
-                              ),
-                              child: _isLoggingOutTailnet
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Text('注销'),
-                            )
-                          : FilledButton.tonal(
-                              onPressed: _isStartingTailnetAuthorization
-                                  ? null
-                                  : _startTailnetAuthorization,
-                              child: _isStartingTailnetAuthorization
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Text('授权登录'),
-                            ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
           const SizedBox(height: 20),
           const Text('安全设置',
@@ -1206,17 +1276,19 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
                       ),
                       validator: (v) => _validateUrl(v, required: true),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _tailnetTargetController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tailnet 目标（可选）',
-                        helperText:
-                            '局域网连接失败时通过 Tailnet 访问\n例如 nas.example.ts.net:6088',
-                        prefixIcon: Icon(Icons.vpn_lock_outlined),
-                        border: OutlineInputBorder(),
+                    if (TailnetPrefs.enabledNotifier.value) ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _tailnetTargetController,
+                        decoration: const InputDecoration(
+                          labelText: 'Tailnet 目标（可选）',
+                          helperText:
+                              '局域网连接失败时通过 Tailnet 访问\n例如 nas.example.ts.net:6088',
+                          prefixIcon: Icon(Icons.vpn_lock_outlined),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
+                    ],
                     if (_errorMessage != null) ...[
                       const SizedBox(height: 12),
                       Text(

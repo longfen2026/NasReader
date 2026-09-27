@@ -52,6 +52,9 @@ abstract class TailnetTransport {
   Future<TailnetTransportResult?> connect(String target);
 
   Future<TailnetStatus?> status() async => null;
+
+  /// 停止原生 tsnet 但保留授权信息，下次连接无需重新授权。
+  Future<bool> stop() async => false;
 }
 
 class TailnetTransportService implements TailnetTransport {
@@ -123,6 +126,21 @@ class TailnetTransportService implements TailnetTransport {
     } catch (error) {
       AppLogger.log('⚠️ Tailnet 授权启动异常: $error');
       return null;
+    }
+  }
+
+  Future<bool> stop() async {
+    if (!Platform.isAndroid) return false;
+
+    try {
+      await _channel.invokeMethod<void>('stop');
+      return true;
+    } on PlatformException catch (error) {
+      AppLogger.log('⚠️ Tailnet 停止失败: ${error.message ?? error.code}');
+      return false;
+    } catch (error) {
+      AppLogger.log('⚠️ Tailnet 停止异常: $error');
+      return false;
     }
   }
 

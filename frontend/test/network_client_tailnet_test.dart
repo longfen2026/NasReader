@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nas_reader/core/network_client.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
+import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -49,6 +50,9 @@ class _FakeTailnetTransport implements TailnetTransport {
   @override
   Future<TailnetStatus?> status() async => null;
 
+  @override
+  Future<bool> stop() async => false;
+
   Future<TailnetStatus?> beginAuthorization() async => null;
 
   Future<bool> hasCompletedAuthorization() async => false;
@@ -71,6 +75,9 @@ class _AuthorizationRequiredTransport implements TailnetTransport {
   @override
   Future<TailnetStatus?> status() async => null;
 
+  @override
+  Future<bool> stop() async => false;
+
   Future<TailnetStatus?> beginAuthorization() async => null;
 
   Future<bool> hasCompletedAuthorization() async => false;
@@ -84,6 +91,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    await TailnetPrefs.setEnabled(true);
     await ServerEndpointService.save(
       primary: lanUrl,
       tailnetTarget: tailnetTarget,

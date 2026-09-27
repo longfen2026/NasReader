@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nas_reader/config/api_config.dart';
 import 'package:nas_reader/config/theme_manager.dart';
 import 'package:nas_reader/core/network_client.dart';
+import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
 
 // 引入本地书架与 NAS 文件浏览器页面
@@ -12,6 +13,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.init();
   await ThemeManager.init(); // 👈 初始化主题配置
+  await TailnetPrefs.init();
   runApp(const MyApp());
 }
 
@@ -30,6 +32,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _showFirstTailnetAuthorizationHint() async {
+    if (!TailnetPrefs.enabledNotifier.value) return;
     final hasCompletedAuthorization =
         await const TailnetTransportService().hasCompletedAuthorization();
     if (hasCompletedAuthorization || !mounted) return;

@@ -10,6 +10,7 @@ import '../services/progress_sync_service.dart';
 import '../services/favorite_service.dart';
 import '../services/server_endpoint_service.dart';
 import '../services/server_profile_service.dart';
+import '../services/tailnet_prefs.dart';
 import '../services/tailnet_transport_service.dart';
 
 // --- 登录 / 注册统一页面 ---
@@ -45,12 +46,17 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadSavedServerUrl();
-    _loadTailnetStatus();
+    if (TailnetPrefs.enabledNotifier.value) {
+      _loadTailnetStatus();
+    } else {
+      _isLoadingTailnetStatus = false;
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed &&
+        TailnetPrefs.enabledNotifier.value) {
       _loadTailnetStatus();
     }
   }
@@ -296,252 +302,305 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(
-                    Icons.auto_stories,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _isRegisterMode ? '创建阅读器账号' : '登录 NAS 同步服务',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // 局域网服务端 URL（可从最近使用过的地址中切换）
-                  TextFormField(
-                    controller: _serverController,
-                    decoration: InputDecoration(
-                      labelText: '局域网服务器地址',
-                      hintText: ApiConfig.baseUrl,
-                      prefixIcon: const Icon(Icons.dns_outlined),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: _profiles.isEmpty
-                          ? null
-                          : PopupMenuButton<ServerProfile>(
-                              icon: const Icon(Icons.arrow_drop_down),
-                              tooltip: '最近使用的服务器',
-                              onSelected: (p) => _onServerSelected(p.url),
-                              itemBuilder: (ctx) => _profiles
-                                  .map(
-                                    (p) => PopupMenuItem<ServerProfile>(
-                                      value: p,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  p.url,
-                                                  style: const TextStyle(
-                                                      fontSize: 13),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                if (p.username.isNotEmpty)
-                                                  Text(
-                                                    p.username,
-                                                    style: const TextStyle(
-                                                      fontSize: 11,
-                                                      color: Colors.grey,
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.close,
-                                                size: 16),
-                                            tooltip: '删除该记录',
-                                            onPressed: () {
-                                              Navigator.pop(ctx);
-                                              _removeProfile(p);
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                    ),
-                    validator: _validateServerUrl,
-                  ),
-                  const SizedBox(height: 8),
-
-                  TextFormField(
-                    controller: _tailnetTargetController,
-                    decoration: const InputDecoration(
-                      labelText: 'Tailnet 目标（可选）',
-                      helperText:
-                          '局域网连接失败时通过 Tailnet 访问\n例如 nas.example.ts.net:6088',
-                      prefixIcon: Icon(Icons.vpn_lock_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      Icons.vpn_key_outlined,
-                      color: _tailnetStatus?.isAuthorized == true
-                          ? Colors.green
-                          : Colors.orange,
-                    ),
-                    title: const Text('Tailscale 授权',
-                        style: TextStyle(fontSize: 14)),
-                    subtitle: Text(
-                      _isLoadingTailnetStatus
-                          ? '正在读取授权状态'
-                          : _tailnetStatus?.isAuthorized == true
-                              ? '已授权，可在局域网不可达时通过 Tailnet 登录'
-                              : '非局域网登录前，请先完成 Tailnet 授权',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    trailing: _isLoadingTailnetStatus ||
-                            _tailnetStatus?.isAuthorized == true
-                        ? null
-                        : FilledButton.tonal(
-                            onPressed: _isStartingTailnetAuthorization
-                                ? null
-                                : _startTailnetAuthorization,
-                            child: _isStartingTailnetAuthorization
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : const Text('授权登录'),
-                          ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _usernameController,
-                    decoration: const InputDecoration(
-                      labelText: '用户名',
-                      prefixIcon: Icon(Icons.person_outline),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) => (v == null || v.trim().length < 3)
-                        ? '用户名至少 3 个字符'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 密码
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: '密码',
-                      prefixIcon: Icon(Icons.lock_outline),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) =>
-                        (v == null || v.length < 6) ? '密码长度至少 6 位' : null,
-                  ),
-                  const SizedBox(height: 4),
-
-                  // 记住密码：关闭时仅保留地址与用户名
-                  Row(
+      body: Stack(
+        children: [
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28.0),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Checkbox(
-                        value: _rememberPassword,
-                        onChanged: (v) =>
-                            setState(() => _rememberPassword = v ?? false),
+                      Icon(
+                        Icons.auto_stories,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
-                      const Text('记住密码', style: TextStyle(fontSize: 13)),
+                      const SizedBox(height: 16),
+                      Text(
+                        _isRegisterMode ? '创建阅读器账号' : '登录 NAS 同步服务',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // 局域网服务端 URL（可从最近使用过的地址中切换）
+                      TextFormField(
+                        controller: _serverController,
+                        decoration: InputDecoration(
+                          labelText: '局域网服务器地址',
+                          hintText: ApiConfig.baseUrl,
+                          prefixIcon: const Icon(Icons.dns_outlined),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: _profiles.isEmpty
+                              ? null
+                              : PopupMenuButton<ServerProfile>(
+                                  icon: const Icon(Icons.arrow_drop_down),
+                                  tooltip: '最近使用的服务器',
+                                  onSelected: (p) => _onServerSelected(p.url),
+                                  itemBuilder: (ctx) => _profiles
+                                      .map(
+                                        (p) => PopupMenuItem<ServerProfile>(
+                                          value: p,
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      p.url,
+                                                      style: const TextStyle(
+                                                          fontSize: 13),
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                    if (p.username.isNotEmpty)
+                                                      Text(
+                                                        p.username,
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          color: Colors.grey,
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.close,
+                                                    size: 16),
+                                                tooltip: '删除该记录',
+                                                onPressed: () {
+                                                  Navigator.pop(ctx);
+                                                  _removeProfile(p);
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                        ),
+                        validator: _validateServerUrl,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Tailnet 配置仅在开关开启时展示
+                      if (TailnetPrefs.enabledNotifier.value) ...[
+                        TextFormField(
+                          controller: _tailnetTargetController,
+                          decoration: const InputDecoration(
+                            labelText: 'Tailnet 目标（可选）',
+                            helperText:
+                                '局域网连接失败时通过 Tailnet 访问\n例如 nas.example.ts.net:6088',
+                            prefixIcon: Icon(Icons.vpn_lock_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.vpn_key_outlined,
+                            color: _tailnetStatus?.isAuthorized == true
+                                ? Colors.green
+                                : Colors.orange,
+                          ),
+                          title: const Text('Tailscale 授权',
+                              style: TextStyle(fontSize: 14)),
+                          subtitle: Text(
+                            _isLoadingTailnetStatus
+                                ? '正在读取授权状态'
+                                : _tailnetStatus?.isAuthorized == true
+                                    ? '已授权，可在局域网不可达时通过 Tailnet 登录'
+                                    : '非局域网登录前，请先完成 Tailnet 授权',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          trailing: _isLoadingTailnetStatus ||
+                                  _tailnetStatus?.isAuthorized == true
+                              ? null
+                              : FilledButton.tonal(
+                                  onPressed: _isStartingTailnetAuthorization
+                                      ? null
+                                      : _startTailnetAuthorization,
+                                  child: _isStartingTailnetAuthorization
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Text('授权登录'),
+                                ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      TextFormField(
+                        controller: _usernameController,
+                        decoration: const InputDecoration(
+                          labelText: '用户名',
+                          prefixIcon: Icon(Icons.person_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) => (v == null || v.trim().length < 3)
+                            ? '用户名至少 3 个字符'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 密码
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: '密码',
+                          prefixIcon: Icon(Icons.lock_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) =>
+                            (v == null || v.length < 6) ? '密码长度至少 6 位' : null,
+                      ),
+                      const SizedBox(height: 4),
+
+                      // 记住密码：关闭时仅保留地址与用户名
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: _rememberPassword,
+                            onChanged: (v) =>
+                                setState(() => _rememberPassword = v ?? false),
+                          ),
+                          const Text('记住密码', style: TextStyle(fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 邀请码（仅注册）
+                      if (_isRegisterMode) ...[
+                        TextFormField(
+                          controller: _inviteCodeController,
+                          decoration: const InputDecoration(
+                            labelText: '邀请码',
+                            helperText: '由服务端管理员提供',
+                            prefixIcon: Icon(Icons.vpn_key_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (v) =>
+                              (v == null || v.trim().isEmpty) ? '请输入邀请码' : null,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      if (_errorMessage != null) ...[
+                        Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                              color: Colors.red, fontSize: 13),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // 提交按钮
+                      FilledButton(
+                        onPressed: _isLoading ? null : _submit,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                        ),
+                        child: _isLoading
+                            ? SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
+                                ),
+                              )
+                            : Text(
+                                _isRegisterMode ? '立即注册' : '登 录',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 模式切换
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _isRegisterMode = !_isRegisterMode;
+                            _errorMessage = null;
+                          });
+                        },
+                        child: Text(
+                          _isRegisterMode ? '已有账号？返回登录' : '没有账号？点击注册新用户',
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary),
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-
-                  // 邀请码（仅注册）
-                  if (_isRegisterMode) ...[
-                    TextFormField(
-                      controller: _inviteCodeController,
-                      decoration: const InputDecoration(
-                        labelText: '邀请码',
-                        helperText: '由服务端管理员提供',
-                        prefixIcon: Icon(Icons.vpn_key_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? '请输入邀请码' : null,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  if (_errorMessage != null) ...[
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // 提交按钮
-                  FilledButton(
-                    onPressed: _isLoading ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                    ),
-                    child: _isLoading
-                        ? SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Theme.of(context).colorScheme.onPrimary,
-                            ),
-                          )
-                        : Text(
-                            _isRegisterMode ? '立即注册' : '登 录',
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 模式切换
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _isRegisterMode = !_isRegisterMode;
-                        _errorMessage = null;
-                      });
-                    },
-                    child: Text(
-                      _isRegisterMode ? '已有账号？返回登录' : '没有账号？点击注册新用户',
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          // 右上角设置按钮：下拉菜单中提供 Tailnet 开关
+          Positioned(
+            top: 0,
+            right: 4,
+            child: SafeArea(
+              child: _buildSettingsMenu(context),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  /// 右上角设置菜单：显示 Tailnet 能力开关。
+  Widget _buildSettingsMenu(BuildContext context) {
+    return PopupMenuButton<void>(
+      icon: const Icon(Icons.settings_outlined),
+      tooltip: '设置',
+      itemBuilder: (menuContext) => [
+        PopupMenuItem<void>(
+          enabled: false,
+          child: StatefulBuilder(
+            builder: (context, setMenuState) {
+              return SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Tailnet 连接', style: TextStyle(fontSize: 14)),
+                subtitle: const Text(
+                  '开启后可在局域网不可达时通过 Tailnet 访问',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: TailnetPrefs.enabledNotifier.value,
+                onChanged: (enabled) async {
+                  await TailnetPrefs.setEnabled(enabled);
+                  setMenuState(() {});
+                  if (!mounted) return;
+                  setState(() {});
+                  if (enabled) {
+                    _loadTailnetStatus();
+                  }
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

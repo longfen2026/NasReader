@@ -29,6 +29,7 @@ class MainActivity: FlutterActivity() {
                     "connect" -> connectTailnet(call, result)
                     "authorize" -> authorizeTailnet(result)
                     "status" -> getTailnetStatus(result)
+                    "stop" -> stopTailnet(result)
                     "logout" -> logoutTailnet(result)
                     else -> result.notImplemented()
                 }
@@ -91,6 +92,24 @@ class MainActivity: FlutterActivity() {
                     result.error(
                         "tailnet_status_failed",
                         error.message ?: "Unable to read Tailnet status.",
+                        null,
+                    )
+                }
+            }
+        }
+    }
+
+    // 停止 tsnet 但保留 stateDir 中的授权，下次连接可免重新授权。
+    private fun stopTailnet(result: MethodChannel.Result) {
+        tailnetExecutor.execute {
+            try {
+                tailnetService.close()
+                runOnUiThread { result.success(null) }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    result.error(
+                        "tailnet_stop_failed",
+                        error.message ?: "Unable to stop Tailnet.",
                         null,
                     )
                 }
