@@ -83,8 +83,9 @@ jobs:
             --split-per-abi --android-skip-build-dependency-validation
           # 立即备份 tailnet 产物：后续 flutter build 会清空 flutter-apk 目录，
           # 若不转移，tailnet 拆分包会被 notailnet 构建覆盖丢失。
+          # 拆分 + flavor 的产物命名为 app-<abi>-<flavor>-release.apk（abi 在前）。
           mkdir -p build/staged-apk
-          cp build/app/outputs/flutter-apk/app-tailnet-*-release.apk build/staged-apk/
+          cp build/app/outputs/flutter-apk/app-*-tailnet-release.apk build/staged-apk/
           # notailnet 风味：仅 arm64，不打包 AAR，体积更小；后端部署公网后无需 Tailnet。
           flutter build apk --release --flavor notailnet \
             --dart-define=TAILNET_SUPPORTED=false \
@@ -108,8 +109,9 @@ jobs:
           STAGED_DIR="frontend/build/staged-apk"
 
           # tailnet 风味：三 ABI 拆分包 -> NasReader-<Tag>-<ABI>.apk
+          # Flutter 拆分 + flavor 命名为 app-<abi>-<flavor>-release.apk（abi 在前）。
           for ABI in arm64-v8a armeabi-v7a x86_64; do
-            SRC_PATH="${STAGED_DIR}/app-tailnet-${ABI}-release.apk"
+            SRC_PATH="${STAGED_DIR}/app-${ABI}-tailnet-release.apk"
             if [[ -f "$SRC_PATH" ]]; then
               TARGET_PATH="${APK_DIR}/NasReader-${TAG_NAME}-${ABI}.apk"
               echo "Renaming $SRC_PATH to $TARGET_PATH"
