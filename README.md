@@ -188,14 +188,19 @@ cd backend && go test ./...
 ```bash
 cd frontend
 flutter pub get
-flutter run                  # 调试
+flutter run --flavor tailnet --dart-define=TAILNET_SUPPORTED=true   # 调试（含 Tailnet）
 flutter test                 # 单元测试
-flutter build apk --release --split-per-abi  # 本地打包（按 ABI 拆分）
+# tailnet 风味：按 ABI 拆分，含 Tailscale 能力
+flutter build apk --release --flavor tailnet --dart-define=TAILNET_SUPPORTED=true --split-per-abi
+# notailnet 风味：仅 arm64，不含 Tailscale，体积更小
+flutter build apk --release --flavor notailnet --dart-define=TAILNET_SUPPORTED=false --target-platform android-arm64
 ```
 
-拆分构建会在 `build/app/outputs/flutter-apk/` 下产出三个 APK：`app-arm64-v8a-release.apk`（现代手机，约 51MB）、`app-armeabi-v7a-release.apk`（32 位旧设备）、`app-x86_64-release.apk`（模拟器）。注意 Tailnet（tailscale）原生库仅提供 arm64-v8a，故仅该架构支持外网访问。
+前端提供两个 Android 产品风味：`tailnet`（打包 Tailscale/tsnet 原生库，支持外网访问）与 `notailnet`（不打包 AAR，体积更小，适用于后端已部署公网、无需 Tailnet 的场景）。`--dart-define=TAILNET_SUPPORTED` 控制 Dart 侧是否展示 Tailnet 相关 UI 与逻辑，必须与所选风味一致。
 
-首次启动在登录页填写局域网服务器地址（如 `http://192.168.1.10:6088`）。如需为外网访问预先配置 Tailnet，可填写目标的 `host:port`（如 `nas.example.ts.net:6088`）；当前 Android 原生 `libtailscale` 转发层尚未接入，因此该字段暂不会提供外网访问。注册需要服务端配置的邀请码。
+`tailnet` 拆分构建会在 `build/app/outputs/flutter-apk/` 下产出 `app-tailnet-arm64-v8a-release.apk`（现代手机，约 51MB）、`app-tailnet-armeabi-v7a-release.apk`（32 位旧设备）、`app-tailnet-x86_64-release.apk`（模拟器）。`notailnet` 仅产出 `app-notailnet-release.apk`（arm64，不含 Tailscale 库）。注意 Tailnet（tailscale）原生库仅提供 arm64-v8a，故仅 `tailnet` 风味的 arm64 包支持外网访问。
+
+首次启动在登录页填写局域网服务器地址（如 `http://192.168.1.10:6088`）。`tailnet` 风味如需为外网访问预先配置 Tailnet，可填写目标的 `host:port`（如 `nas.example.ts.net:6088`）；当前 Android 原生 `libtailscale` 转发层尚未接入，因此该字段暂不会提供外网访问。注册需要服务端配置的邀请码。
 
 #### 自动发布
 
@@ -206,7 +211,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-Tag 推送后自动产出 `NasReader-<Tag>-<ABI>.apk`（按 ABI 拆分）并发布至 GitHub Releases，同时构建并推送后端多架构镜像。
+Tag 推送后自动产出 `NasReader-<Tag>-<ABI>.apk`（tailnet 风味，按 ABI 拆分）与 `NasReader-<Tag>-arm64-v8a-notailnet.apk`（notailnet 风味，仅 arm64），并发布至 GitHub Releases，同时构建并推送后端多架构镜像。
 
 ---
 

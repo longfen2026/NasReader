@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:nas_reader/config/api_config.dart';
+import 'package:nas_reader/config/build_config.dart';
 import 'package:nas_reader/config/theme_manager.dart'; // 👈 引入 ThemeManager
 import 'package:nas_reader/core/network_client.dart';
 import 'package:nas_reader/services/auth_service.dart';
@@ -932,31 +933,32 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                 ),
                 child: Column(
                   children: [
-                    SwitchListTile(
-                      secondary: Icon(
-                        Icons.vpn_lock_outlined,
-                        color: tailnetEnabled
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey,
+                    if (BuildConfig.tailnetSupported)
+                      SwitchListTile(
+                        secondary: Icon(
+                          Icons.vpn_lock_outlined,
+                          color: tailnetEnabled
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey,
+                        ),
+                        title: const Text('Tailnet 连接',
+                            style: TextStyle(fontSize: 14)),
+                        subtitle: const Text(
+                          '开启后可在局域网不可达时通过 Tailnet 访问',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: tailnetEnabled,
+                        onChanged: (enabled) async {
+                          await TailnetPrefs.setEnabled(enabled);
+                          if (!mounted) return;
+                          if (enabled) {
+                            _loadTailnetStatus();
+                          } else {
+                            setState(() => _isLoadingTailnetStatus = false);
+                          }
+                        },
                       ),
-                      title:
-                          const Text('Tailnet 连接', style: TextStyle(fontSize: 14)),
-                      subtitle: const Text(
-                        '开启后可在局域网不可达时通过 Tailnet 访问',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      value: tailnetEnabled,
-                      onChanged: (enabled) async {
-                        await TailnetPrefs.setEnabled(enabled);
-                        if (!mounted) return;
-                        if (enabled) {
-                          _loadTailnetStatus();
-                        } else {
-                          setState(() => _isLoadingTailnetStatus = false);
-                        }
-                      },
-                    ),
-                    const Divider(height: 1),
+                    if (BuildConfig.tailnetSupported) const Divider(height: 1),
                     if (tailnetEnabled)
                       ValueListenableBuilder<ServerConnectionPath>(
                         valueListenable: NetworkClient.connectionPath,

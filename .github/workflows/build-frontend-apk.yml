@@ -77,9 +77,16 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
+          # tailnet 风味：三个 ABI 拆分包，含 Tailscale/tsnet 能力（arm64 打包 gojni.so）。
+          flutter build apk --release --flavor tailnet \
+            --dart-define=TAILNET_SUPPORTED=true \
+            --split-per-abi --android-skip-build-dependency-validation
+          # notailnet 风味：仅 arm64，不打包 AAR，体积更小；后端部署公网后无需 Tailnet。
+          flutter build apk --release --flavor notailnet \
+            --dart-define=TAILNET_SUPPORTED=false \
+            --target-platform android-arm64 --android-skip-build-dependency-validation
 
-      # 动态计算版本名并重命名各 ABI 的 APK 为 NasReader-<Tag号>-<ABI>.apk
+      # 动态计算版本名并重命名各 APK 为 NasReader-<Tag号>-<ABI>[-notailnet].apk
       - name: Rename APKs with Tag
         id: prepare_apk
         run: |
@@ -89,17 +96,27 @@ jobs:
           else
             TAG_NAME="${GITHUB_SHA::7}"
           fi
-          
+
           APK_DIR="frontend/build/app/outputs/flutter-apk"
+
+          # tailnet 风味：三 ABI 拆分包 -> NasReader-<Tag>-<ABI>.apk
           for ABI in arm64-v8a armeabi-v7a x86_64; do
-            SRC_PATH="${APK_DIR}/app-${ABI}-release.apk"
+            SRC_PATH="${APK_DIR}/app-tailnet-${ABI}-release.apk"
             if [[ -f "$SRC_PATH" ]]; then
               TARGET_PATH="${APK_DIR}/NasReader-${TAG_NAME}-${ABI}.apk"
               echo "Renaming $SRC_PATH to $TARGET_PATH"
               cp "$SRC_PATH" "$TARGET_PATH"
             fi
           done
-          
+
+          # notailnet 风味：单个 arm64 包 -> NasReader-<Tag>-arm64-v8a-notailnet.apk
+          NOTAILNET_SRC="${APK_DIR}/app-notailnet-release.apk"
+          if [[ -f "$NOTAILNET_SRC" ]]; then
+            NOTAILNET_TARGET="${APK_DIR}/NasReader-${TAG_NAME}-arm64-v8a-notailnet.apk"
+            echo "Renaming $NOTAILNET_SRC to $NOTAILNET_TARGET"
+            cp "$NOTAILNET_SRC" "$NOTAILNET_TARGET"
+          fi
+
           # 输出变量给后续步骤使用
           echo "apk_name=NasReader-${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "apk_glob=${APK_DIR}/NasReader-${TAG_NAME}-*.apk" >> $GITHUB_OUTPUT

@@ -40,6 +40,9 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        // 各风味的 MainActivity 位于 src/<flavor>/kotlin，显式登记与 main 保持一致。
+        tailnet.java.srcDirs += 'src/tailnet/kotlin'
+        notailnet.java.srcDirs += 'src/notailnet/kotlin'
     }
 
     defaultConfig {
@@ -52,6 +55,18 @@ android {
         // 注意：不要在此设置 ndk { abiFilters }。
         // 它会与 `flutter build apk --split-per-abi` 注入的 splits ABI 过滤器冲突，
         // 且对 fat APK 构建无效（Flutter 插件会自行合并全部目标平台）。
+    }
+
+    // tailnet：包含 Tailscale/tsnet 能力（依赖 arm64 的 tailnetandroid.aar）。
+    // notailnet：不打包 AAR，体积更小，适用于后端已部署公网、无需 Tailnet 的场景。
+    flavorDimensions "connectivity"
+    productFlavors {
+        tailnet {
+            dimension "connectivity"
+        }
+        notailnet {
+            dimension "connectivity"
+        }
     }
 
     signingConfigs {
@@ -89,5 +104,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
-    implementation files("../../../third_party/tailnet_android/tailnetandroid.aar")
+    // tailnet AAR 仅供 tailnet 风味使用；notailnet 不依赖，省去 arm64 gojni.so。
+    tailnetImplementation files("../../../third_party/tailnet_android/tailnetandroid.aar")
 }

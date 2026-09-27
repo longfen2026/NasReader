@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:nas_reader/config/api_config.dart';
+import 'package:nas_reader/config/build_config.dart';
 import 'package:nas_reader/core/network_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -557,13 +558,14 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
             ),
           ),
           // 右上角设置按钮：下拉菜单中提供 Tailnet 开关
-          Positioned(
-            top: 0,
-            right: 4,
-            child: SafeArea(
-              child: _buildSettingsMenu(context),
+          if (BuildConfig.tailnetSupported)
+            Positioned(
+              top: 0,
+              right: 4,
+              child: SafeArea(
+                child: _buildSettingsMenu(context),
+              ),
             ),
-          ),
         ],
       ),
     );
