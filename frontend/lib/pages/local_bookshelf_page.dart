@@ -72,6 +72,17 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
   Set<String> _favoriteIds = {};
   bool _isLoading = true;
 
+  /// 当前分组：true=本地（已缓存），false=云端（有阅读记录但未缓存）。默认本地。
+  bool _showLocalGroup = true;
+
+  /// 本地分组：已下载缓存到本地的书
+  List<BookshelfItem> get _localBooks =>
+      _books.where((b) => b.isDownloaded).toList();
+
+  /// 云端分组：有阅读记录但尚未缓存到本地的书
+  List<BookshelfItem> get _cloudBooks =>
+      _books.where((b) => !b.isDownloaded).toList();
+
   @override
   void initState() {
     super.initState();
@@ -593,12 +604,17 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('本地书架'),
+        title: Text(_showLocalGroup ? '本地书架' : '云端书架'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '同步远端进度',
             onPressed: loadLocalBooks,
+          ),
+          IconButton(
+            icon: Icon(_showLocalGroup ? Icons.cloud_outlined : Icons.phone_android),
+            tooltip: _showLocalGroup ? '切换到云端' : '切换到本地',
+            onPressed: () => setState(() => _showLocalGroup = !_showLocalGroup),
           ),
         ],
       ),
@@ -614,16 +630,20 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_books.isEmpty) {
+    final books = _showLocalGroup ? _localBooks : _cloudBooks;
+
+    if (books.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           SizedBox(height: MediaQuery.of(context).size.height * 0.25),
-          const Center(
+          Center(
             child: Text(
-              '暂无书籍阅读记录\n可前往「NAS 书库」下载并阅读',
+              _showLocalGroup
+                  ? '本地暂无已缓存书籍\n可前往「NAS 书库」下载，或切换到云端'
+                  : '云端暂无未缓存的阅读记录',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, height: 1.5),
+              style: const TextStyle(color: Colors.grey, height: 1.5),
             ),
           ),
         ],
@@ -632,10 +652,10 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
 
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: _books.length,
+      itemCount: books.length,
       separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
-        final book = _books[index];
+        final book = books[index];
         final format = BookFormat.fromExtension(book.extension);
 
         return ListTile(
