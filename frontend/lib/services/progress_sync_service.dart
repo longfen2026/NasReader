@@ -278,6 +278,25 @@ class ProgressSyncService {
     }
   }
 
+  /// 仅删除云端阅读进度和书签，不影响收藏或 NAS 原始文件。
+  static Future<void> removeBookReadingDataFromCloud(
+    String bookId, [
+    Dio? dio,
+  ]) async {
+    if (!ApiConfig.isLoggedIn) {
+      throw StateError('未登录，无法移除云端阅读记录和书签');
+    }
+
+    final client = _getDio(dio);
+    final response = await client.post(
+      '/api/v1/sync/remove-reading-data',
+      data: {'book_id': bookId},
+    );
+    AppLogger.log(
+      '🗑️ 云端阅读记录和书签已清除: $bookId (HTTP ${response.statusCode})',
+    );
+  }
+
   /// 6. 从书架移除单本书籍：只清空本地进度与书签，云端记录保留，
   /// 重新加入书架时可从云端拉回历史进度继续阅读。
   static Future<void> removeFromShelfLocally(String bookId) async {

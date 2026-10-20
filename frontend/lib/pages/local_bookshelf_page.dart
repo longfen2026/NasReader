@@ -67,7 +67,8 @@ class LocalBookshelfPage extends StatefulWidget {
   State<LocalBookshelfPage> createState() => LocalBookshelfPageState();
 }
 
-class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBindingObserver {
+class LocalBookshelfPageState extends State<LocalBookshelfPage>
+    with WidgetsBindingObserver {
   List<BookshelfItem> _books = [];
   Set<String> _favoriteIds = {};
   bool _isLoading = true;
@@ -175,7 +176,9 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
 
         mergedItems[pItem.bookId] = BookshelfItem(
           bookId: pItem.bookId,
-          title: pItem.title.isNotEmpty ? pItem.title : p.basenameWithoutExtension(fileName),
+          title: pItem.title.isNotEmpty
+              ? pItem.title
+              : p.basenameWithoutExtension(fileName),
           fileName: fileName,
           extension: ext,
           localFile: localFile,
@@ -184,7 +187,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
           epubCfi: pItem.epubCfi,
           txtByteOffset: pItem.txtByteOffset,
           pdfPage: pItem.pdfPage,
-          lastReadTime: DateTime.fromMillisecondsSinceEpoch(pItem.clientUpdatedAt),
+          lastReadTime:
+              DateTime.fromMillisecondsSinceEpoch(pItem.clientUpdatedAt),
           fileSizeBytes: _fileSizeOf(localFile),
         );
       }
@@ -192,7 +196,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
       // 4. 补充本地已存在但尚未有远端进度的离线书籍
       filesByBookId.forEach((bookId, file) {
         if (!mergedItems.containsKey(bookId)) {
-          final fileName = BookCacheNaming.extractOriginalName(p.basename(file.path));
+          final fileName =
+              BookCacheNaming.extractOriginalName(p.basename(file.path));
           final ext = p.extension(fileName).toLowerCase();
           if (BookFormat.fromExtension(ext) != null) {
             final stat = file.statSync();
@@ -283,7 +288,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
     );
   }
 
-  Future<void> _confirmToggleFavorite(BookshelfItem book, bool isFavorite) async {
+  Future<void> _confirmToggleFavorite(
+      BookshelfItem book, bool isFavorite) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -317,7 +323,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('移入垃圾箱', style: TextStyle(fontWeight: FontWeight.bold)),
+        title:
+            const Text('移入垃圾箱', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Text(
           '确定要把《${book.title}》移入 NAS 垃圾箱吗？\n\n'
           '${hasRemote ? '• NAS 书库中的原始文件会一并移入垃圾箱\n' : '• 该书未关联 NAS 书库文件，仅清理本地记录\n'}'
@@ -332,7 +339,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('移入垃圾箱', style: TextStyle(color: Colors.redAccent)),
+            child:
+                const Text('移入垃圾箱', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -343,8 +351,9 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
     final dio = widget.dio ?? NetworkClient.getDio();
     try {
       if (hasRemote) {
-        final remotePath =
-            book.remotePath.startsWith('/') ? book.remotePath : '/${book.remotePath}';
+        final remotePath = book.remotePath.startsWith('/')
+            ? book.remotePath
+            : '/${book.remotePath}';
         await dio.post('/api/v1/files/trash', data: {'path': remotePath});
       }
 
@@ -377,42 +386,76 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
 
   /// 从书架移除（只清本地缓存与本地进度/书签，云端记录保留）
   Future<void> _handleDeleteBook(BookshelfItem book) async {
-    final bool? shouldDelete = await showDialog<bool>(
+    var removeFromCloud = false;
+    final bool? removeCloudChoice = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('从书架移除', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text(
-          '确定要从书架移除《${book.title}》吗？\n\n'
-          '• 本地缓存文件与本地阅读进度、书签将被清理\n'
-          '• 云端阅读进度与书签保留，重新加入书架后可继续阅读\n'
-          '• NAS 原始文件不受影响，可随时重新下载',
-          style: const TextStyle(fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          scrollable: true,
+          title: const Text('从书架移除',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '确定要从书架移除《${book.title}》吗？\n\n'
+                '• 本地缓存文件与本地阅读进度、书签将被清理\n'
+                '• 默认保留云端阅读进度与书签，重新加入书架后可继续阅读\n'
+                '• NAS 原始文件不受影响，可随时重新下载',
+                style: const TextStyle(fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: removeFromCloud,
+                onChanged: (value) =>
+                    setDialogState(() => removeFromCloud = value ?? false),
+                title: const Text(
+                  '同时从云端移除',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '删除云端阅读记录和对应书签，不影响收藏',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent.shade700,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认移除'),
-          ),
-        ],
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.redAccent.shade700,
+              ),
+              onPressed: () => Navigator.pop(ctx, removeFromCloud),
+              child: const Text('确认移除'),
+            ),
+          ],
+        ),
       ),
     );
 
-    if (shouldDelete != true) return;
+    if (removeCloudChoice == null || !mounted) return;
 
     try {
+      if (removeCloudChoice) {
+        await ProgressSyncService.removeBookReadingDataFromCloud(
+          book.bookId,
+          widget.dio,
+        );
+      }
+
       // 1. 删除本地物理缓存文件
       if (book.localFile != null && await book.localFile!.exists()) {
         await book.localFile!.delete();
       }
 
-      // 2. 只清理本地记录，并屏蔽远端同步把它拉回书架
+      // 2. 清理本地记录，并屏蔽远端同步把它拉回书架
       await ProgressSyncService.removeFromShelfLocally(book.bookId);
 
       // 3. 重新加载书架视图
@@ -421,7 +464,11 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已从书架移除《${book.title}》'),
+            content: Text(
+              removeCloudChoice
+                  ? '已从书架及云端移除《${book.title}》的阅读记录和书签'
+                  : '已从书架移除《${book.title}》',
+            ),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ),
@@ -431,7 +478,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
       AppLogger.log('❌ 移除书架异常: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('移除失败: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+              content: Text('移除失败: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -586,7 +634,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
         context,
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 120),
-          pageBuilder: (context, animation, secondaryAnimation) => EpubReaderPage(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              EpubReaderPage(
             bookId: book.bookId,
             file: epubFile,
             title: book.title,
@@ -613,7 +662,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
         context,
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 120),
-          pageBuilder: (context, animation, secondaryAnimation) => StreamTxtReaderPage(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              StreamTxtReaderPage(
             bookId: book.bookId,
             file: targetFile,
             title: book.title,
@@ -639,7 +689,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
         context,
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 120),
-          pageBuilder: (context, animation, secondaryAnimation) => EpubReaderPage(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              EpubReaderPage(
             bookId: book.bookId,
             file: targetFile,
             title: book.title,
@@ -666,7 +717,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
         context,
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 120),
-          pageBuilder: (context, animation, secondaryAnimation) => PdfReaderPage(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              PdfReaderPage(
             bookId: book.bookId,
             file: targetFile,
             title: book.title,
@@ -703,7 +755,8 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
             onPressed: loadLocalBooks,
           ),
           IconButton(
-            icon: Icon(_showLocalGroup ? Icons.cloud_outlined : Icons.phone_android),
+            icon: Icon(
+                _showLocalGroup ? Icons.cloud_outlined : Icons.phone_android),
             tooltip: _showLocalGroup ? '切换到云端' : '切换到本地',
             onPressed: () => setState(() => _showLocalGroup = !_showLocalGroup),
           ),
@@ -779,12 +832,14 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
               const SizedBox(width: 8),
               if (!book.isDownloaded)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
                     color: Colors.grey.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text('云端记录 · 点击下载', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  child: const Text('云端记录 · 点击下载',
+                      style: TextStyle(fontSize: 10, color: Colors.grey)),
                 ),
             ],
           ),

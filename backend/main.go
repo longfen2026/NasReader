@@ -115,6 +115,8 @@ func main() {
 
 			// 4. 批量删除书籍云端记录（进度 + 书签 + 收藏）
 			syncGroup.POST("/delete", handlers.DeleteBookSyncData)
+			// 5. 从书架移除时仅删除云端阅读进度和书签，保留收藏
+			syncGroup.POST("/remove-reading-data", handlers.RemoveBookReadingData)
 		}
 
 		// 文件系统相关接口
