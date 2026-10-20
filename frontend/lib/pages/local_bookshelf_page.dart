@@ -449,30 +449,121 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage> with WidgetsBind
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('正在从 NAS 下载《${book.title}》...')),
-      );
-
       final appDir = await getApplicationDocumentsDirectory();
       final savePath = p.join(
         appDir.path,
         'books',
-        BookCacheNaming.buildFileName(bookId: book.bookId, originalName: book.fileName),
+        BookCacheNaming.buildFileName(
+            bookId: book.bookId, originalName: book.fileName),
       );
-      final downloadPath = book.remotePath.startsWith('/') ? book.remotePath : '/${book.remotePath}';
+      final downloadPath = book.remotePath.startsWith('/')
+          ? book.remotePath
+          : '/${book.remotePath}';
+      final downloadProgress = ValueNotifier<double>(0.0);
+      final cancelToken = CancelToken();
+      var progressDialogVisible = true;
 
       try {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, result) {
+              cancelToken.cancel('用户取消下载');
+            },
+            child: Dialog(
+              backgroundColor: Theme.of(dialogContext).cardColor,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: CircularProgressIndicator(strokeWidth: 3.5),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      '正在下载《${book.title}》',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const SizedBox(height: 12),
+                    ValueListenableBuilder<double>(
+                      valueListenable: downloadProgress,
+                      builder: (context, progress, _) => Column(
+                        children: [
+                          LinearProgressIndicator(
+                            value: progress > 0 ? progress : null,
+                            minHeight: 6,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            progress > 0
+                                ? '${(progress * 100).toStringAsFixed(1)}%'
+                                : '正在从 NAS 建立传输连接...',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () {
+                        cancelToken.cancel('用户取消');
+                        progressDialogVisible = false;
+                        Navigator.pop(dialogContext);
+                      },
+                      child: const Text('取消下载'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await Directory(p.dirname(savePath)).create(recursive: true);
         await widget.dio!.download(
           '/api/v1/files/download',
           savePath,
           queryParameters: {'path': downloadPath},
+          cancelToken: cancelToken,
+          onReceiveProgress: (received, total) {
+            if (total > 0) {
+              downloadProgress.value = (received / total).clamp(0.0, 1.0);
+            }
+          },
         );
+        if (mounted && progressDialogVisible) {
+          progressDialogVisible = false;
+          Navigator.of(context, rootNavigator: true).pop();
+        }
         targetFile = File(savePath);
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('下载失败: $e'), backgroundColor: Colors.red),
-        );
+        if (mounted && progressDialogVisible) {
+          progressDialogVisible = false;
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        final isCanceled = e is DioException && CancelToken.isCancel(e);
+        if (!isCanceled && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('下载失败: $e'), backgroundColor: Colors.red),
+          );
+        }
         return;
+      } finally {
+        downloadProgress.dispose();
       }
     } else {
       targetFile = book.localFile!;
