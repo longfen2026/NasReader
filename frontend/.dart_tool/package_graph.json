@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "nas_reader",
-      "version": "0.8.10+105",
+      "version": "0.8.11+106",
       "dependencies": [
         "archive",
         "charset",
