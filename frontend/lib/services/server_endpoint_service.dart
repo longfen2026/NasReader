@@ -10,21 +10,28 @@ class ServerEndpoints {
   final String primary;
   final String tailnetTarget;
 
+  /// 备用服务器地址，主服务器不可用时自动切换使用。
+  final String backupUrl;
+
   const ServerEndpoints({
     this.primary = '',
     this.tailnetTarget = '',
+    this.backupUrl = '',
   });
 
   bool get hasTailnetTarget => tailnetTarget.isNotEmpty;
+  bool get hasBackupUrl => backupUrl.isNotEmpty;
 }
 
-/// 管理局域网服务器地址与其直连健康检查。
+/// 管理主/备服务器地址与直连健康检查。
 class ServerEndpointService {
   static const String _keyPrimary = 'server_primary_url';
   static const String _keyTailnetTarget = 'server_tailnet_target';
-  // 仅用于迁移既有主备配置，新的版本不会读取或写入它们。
-  static const String _keyBackup = 'server_backup_url';
-  static const String _keyUsingBackup = 'server_using_backup';
+  // 备用服务器使用新 key，避免被移除的旧版主备功能留下的残留值复活；
+  // 旧版的 server_backup_url / server_using_backup 仅在保存时清理。
+  static const String _keyBackupUrl = 'server_backup_url_v2';
+  static const String _keyLegacyBackup = 'server_backup_url';
+  static const String _keyLegacyUsingBackup = 'server_using_backup';
 
   /// 健康探针路径；旧版后端没有该路由时返回 404，仍视为“可达”
   static const String healthPath = '/api/v1/health';
@@ -41,15 +48,22 @@ class ServerEndpointService {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString(_keyPrimary) ?? '';
     final tailnetTarget = prefs.getString(_keyTailnetTarget) ?? '';
-    return ServerEndpoints(primary: primary, tailnetTarget: tailnetTarget);
+    final backupUrl = prefs.getString(_keyBackupUrl) ?? '';
+    return ServerEndpoints(
+      primary: primary,
+      tailnetTarget: tailnetTarget,
+      backupUrl: backupUrl,
+    );
   }
 
   static Future<void> save({
     required String primary,
     String tailnetTarget = '',
+    String backupUrl = '',
   }) async {
     final normalizedPrimary = normalizeUrl(primary);
     final normalizedTailnetTarget = normalizeTailnetTarget(tailnetTarget);
+    final normalizedBackupUrl = normalizeUrl(backupUrl);
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyPrimary, normalizedPrimary);
@@ -58,8 +72,13 @@ class ServerEndpointService {
     } else {
       await prefs.setString(_keyTailnetTarget, normalizedTailnetTarget);
     }
-    await prefs.remove(_keyBackup);
-    await prefs.remove(_keyUsingBackup);
+    if (normalizedBackupUrl.isEmpty) {
+      await prefs.remove(_keyBackupUrl);
+    } else {
+      await prefs.setString(_keyBackupUrl, normalizedBackupUrl);
+    }
+    await prefs.remove(_keyLegacyBackup);
+    await prefs.remove(_keyLegacyUsingBackup);
   }
 
   /// tsnet dial 使用 host:port，不接受 HTTP URL。
@@ -103,24 +122,36 @@ class ServerEndpointService {
     }
   }
 
-  /// 探测用户配置的局域网服务器；不可达时返回 null。
+  /// 优先探测主服务器，不可用时回落备用服务器；均不可用返回 null。
   static Future<ServerEndpointPick?> pickAvailable({
     required String primary,
+    String backupUrl = '',
     Dio? client,
   }) async {
     final normalizedPrimary = normalizeUrl(primary);
+    final normalizedBackupUrl = normalizeUrl(backupUrl);
 
-    if (normalizedPrimary.isNotEmpty && await probe(normalizedPrimary, client: client)) {
-      return ServerEndpointPick(url: normalizedPrimary);
+    if (normalizedPrimary.isNotEmpty &&
+        await probe(normalizedPrimary, client: client)) {
+      return ServerEndpointPick(url: normalizedPrimary, usingBackup: false);
+    }
+
+    if (normalizedBackupUrl.isNotEmpty &&
+        await probe(normalizedBackupUrl, client: client)) {
+      AppLogger.log('🔀 主服务器不可用，切换到备用服务器 $normalizedBackupUrl');
+      return ServerEndpointPick(url: normalizedBackupUrl, usingBackup: true);
     }
 
     return null;
   }
 }
 
-/// 局域网直连健康检查的结果。
+/// 主/备直连健康检查的结果。
 class ServerEndpointPick {
   final String url;
 
-  const ServerEndpointPick({required this.url});
+  /// 选中的是否为备用服务器地址。
+  final bool usingBackup;
+
+  const ServerEndpointPick({required this.url, this.usingBackup = false});
 }

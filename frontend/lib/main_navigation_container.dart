@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
+import 'services/server_failover_service.dart';
+
 import 'pages/favorites_page.dart';
 import 'pages/file_browser_page.dart';
 import 'pages/local_bookshelf_page.dart';
@@ -60,6 +62,8 @@ class _MainNavigationContainerState extends State<MainNavigationContainer>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // 恢复前台时校验主/备可用性（内置节流），主服务器恢复则自动切回。
+      ServerFailoverService.ensureAvailable();
       _bookshelfKey.currentState?.loadLocalBooks();
       _favoritesKey.currentState?.loadFavorites();
     }

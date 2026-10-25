@@ -644,6 +644,12 @@ class _AccountCenterPageState extends State<AccountCenterPage>
   bool _isStartingTailnetAuthorization = false;
   bool _isLoggingOutTailnet = false;
 
+  /// 当前生效地址是否为备用服务器（静默切换后仅在状态展示上可见）。
+  bool get _isUsingBackup =>
+      _endpoints.hasBackupUrl &&
+      NetworkClient.sanitizeBaseUrl(ApiConfig.baseUrl) ==
+          NetworkClient.sanitizeBaseUrl(_endpoints.backupUrl);
+
   @override
   void initState() {
     super.initState();
@@ -989,11 +995,17 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                               style: const TextStyle(fontSize: 12),
                             ),
                             trailing: Text(
-                              isTailnet ? 'Tailnet' : '直连',
+                              isTailnet
+                                  ? 'Tailnet'
+                                  : (_isUsingBackup ? '备用' : '直连'),
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: isTailnet ? Colors.teal : null,
+                                color: isTailnet
+                                    ? Colors.teal
+                                    : _isUsingBackup
+                                        ? Colors.orange
+                                        : null,
                               ),
                             ),
                           );
@@ -1011,14 +1023,43 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                               : '未配置',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        trailing: const Text(
-                          '直连',
+                        trailing: Text(
+                          _isUsingBackup ? '备用' : '直连',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
+                            color: _isUsingBackup ? Colors.orange : null,
                           ),
                         ),
                       ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(
+                        Icons.storage_outlined,
+                        color: _endpoints.hasBackupUrl
+                            ? Colors.orange
+                            : Colors.grey,
+                      ),
+                      title: const Text('备用服务器',
+                          style: TextStyle(fontSize: 14)),
+                      subtitle: Text(
+                        _endpoints.hasBackupUrl
+                            ? _endpoints.backupUrl
+                            : '未配置，主服务器不可用时将无法自动切换',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Text(
+                        _endpoints.hasBackupUrl ? '备用' : '未配置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _endpoints.hasBackupUrl
+                              ? Colors.orange
+                              : Colors.grey,
+                        ),
+                      ),
+                      onTap: _openServerEditor,
+                    ),
                     const Divider(height: 1),
                     ListTile(
                       leading: Icon(Icons.dns_outlined,
@@ -1026,10 +1067,9 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                       title: const Text('服务器地址配置',
                           style: TextStyle(fontSize: 14)),
                       subtitle: Text(
-                        tailnetEnabled
-                            ? '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
-                                'Tailnet：${_endpoints.hasTailnetTarget ? _endpoints.tailnetTarget : "未配置"}'
-                            : '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}',
+                        '局域网：${_endpoints.primary.isNotEmpty ? _endpoints.primary : "未配置"}\n'
+                            '备用：${_endpoints.hasBackupUrl ? _endpoints.backupUrl : "未配置"}'
+                            '${tailnetEnabled ? '\nTailnet：${_endpoints.hasTailnetTarget ? _endpoints.tailnetTarget : "未配置"}' : ''}',
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: const Icon(Icons.chevron_right),
@@ -1165,6 +1205,7 @@ class ServerEndpointEditorPage extends StatefulWidget {
 class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
   final _formKey = GlobalKey<FormState>();
   final _primaryController = TextEditingController();
+  final _backupUrlController = TextEditingController();
   final _tailnetTargetController = TextEditingController();
 
   bool _isLoading = true;
@@ -1183,6 +1224,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
     setState(() {
       _primaryController.text =
           endpoints.primary.isNotEmpty ? endpoints.primary : ApiConfig.baseUrl;
+      _backupUrlController.text = endpoints.backupUrl;
       _tailnetTargetController.text = endpoints.tailnetTarget;
       _isLoading = false;
     });
@@ -1191,6 +1233,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
   @override
   void dispose() {
     _primaryController.dispose();
+    _backupUrlController.dispose();
     _tailnetTargetController.dispose();
     super.dispose();
   }
@@ -1204,6 +1247,8 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
     });
 
     final primary = ServerProfileService.normalizeUrl(_primaryController.text);
+    final backupUrl =
+        ServerProfileService.normalizeUrl(_backupUrlController.text);
     final tailnetTarget = ServerEndpointService.normalizeTailnetTarget(
       _tailnetTargetController.text,
     );
@@ -1213,6 +1258,7 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
       await ServerEndpointService.save(
         primary: primary,
         tailnetTarget: tailnetTarget,
+        backupUrl: backupUrl,
       );
 
       // 切换到不同后端时清空本地书架数据，避免上一台服务器的阅读记录残留
@@ -1255,6 +1301,19 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
     return null;
   }
 
+  /// 备用地址为可选项，但填写时不得与主服务器相同。
+  String? _validateBackupUrl(String? value) {
+    final error = _validateUrl(value, required: false);
+    if (error != null) return error;
+
+    final backup = ServerProfileService.normalizeUrl(value ?? '');
+    if (backup.isNotEmpty &&
+        backup == ServerProfileService.normalizeUrl(_primaryController.text)) {
+      return '备用服务器不能与主服务器相同';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1277,6 +1336,18 @@ class _ServerEndpointEditorPageState extends State<ServerEndpointEditorPage> {
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) => _validateUrl(v, required: true),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _backupUrlController,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: '备用服务器地址（可选）',
+                        helperText: '主服务器不可用时自动切换到该地址',
+                        prefixIcon: Icon(Icons.storage_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: _validateBackupUrl,
                     ),
                     if (TailnetPrefs.enabledNotifier.value) ...[
                       const SizedBox(height: 16),

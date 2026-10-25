@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nas_reader/config/api_config.dart';
 import 'package:nas_reader/config/theme_manager.dart';
 import 'package:nas_reader/core/network_client.dart';
+import 'package:nas_reader/services/server_failover_service.dart';
 import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
 
@@ -14,6 +17,8 @@ void main() async {
   await ApiConfig.init();
   await ThemeManager.init(); // 👈 初始化主题配置
   await TailnetPrefs.init();
+  // 启动时校验主服务器可用性，不可用则静默切到备用服务器；不阻塞首帧渲染。
+  unawaited(ServerFailoverService.ensureAvailable(force: true));
   runApp(const MyApp());
 }
 

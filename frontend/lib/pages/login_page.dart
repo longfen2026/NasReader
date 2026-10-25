@@ -207,9 +207,12 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     try {
       // 先持久化逻辑端点，随后由登录请求按“局域网直连 -> Tailnet”处理。
       // 不能先做仅局域网的探测，否则外网首次登录会被错误阻断。
+      // 登录页不涉及备用服务器配置，透传账号中心已配置的值避免被清掉。
+      final existingEndpoints = await ServerEndpointService.load();
       await ServerEndpointService.save(
         primary: primaryUrl,
         tailnetTarget: tailnetTarget,
+        backupUrl: existingEndpoints.backupUrl,
       );
 
       // 切换到不同后端时清空本地书架数据，避免上一台服务器的阅读记录残留

@@ -77,6 +77,46 @@ void main() {
     );
 
     expect(pick?.url, primary);
+    expect(pick?.usingBackup, isFalse);
+  });
+
+  test('pickAvailable 主服务器不可用时回落备用服务器', () async {
+    const primary = 'http://nas:6088';
+    const backup = 'http://backup:6088';
+    final pick = await ServerEndpointService.pickAvailable(
+      primary: primary,
+      backupUrl: backup,
+      client: _dioWith({backup}),
+    );
+
+    expect(pick?.url, backup);
+    expect(pick?.usingBackup, isTrue);
+  });
+
+  test('pickAvailable 主备均不可用时返回 null', () async {
+    final pick = await ServerEndpointService.pickAvailable(
+      primary: 'http://nas:6088',
+      backupUrl: 'http://backup:6088',
+      client: _dioWith({}),
+    );
+
+    expect(pick, isNull);
+  });
+
+  test('save/load 持久化备用地址，清空时移除对应键', () async {
+    await ServerEndpointService.save(
+      primary: 'http://nas:6088',
+      backupUrl: ' http://backup:6088/ ',
+    );
+    expect(
+      (await ServerEndpointService.load()).backupUrl,
+      'http://backup:6088',
+    );
+
+    await ServerEndpointService.save(primary: 'http://nas:6088');
+    expect((await ServerEndpointService.load()).hasBackupUrl, isFalse);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('server_backup_url_v2'), isFalse);
   });
 
   test('save 持久化局域网地址并清理旧主备键', () async {

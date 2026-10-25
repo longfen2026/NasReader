@@ -9,6 +9,7 @@ import 'package:nas_reader/pages/login_page.dart';
 import 'package:nas_reader/services/app_logger.dart';
 import 'package:nas_reader/services/auth_service.dart';
 import 'package:nas_reader/services/server_endpoint_service.dart';
+import 'package:nas_reader/services/server_failover_service.dart';
 import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -31,6 +32,9 @@ class NetworkClient {
 
   /// 标记请求已经历过一次 Tailnet 重试，避免无限重放。
   static const String _tailnetRetryFlag = 'tailnetRetried';
+
+  /// 标记请求已经历过一次备用服务器重放，避免主备之间无限循环。
+  static const String _backupRetryFlag = 'backupRetried';
   static TailnetTransport _tailnetTransport = const TailnetTransportService();
 
   /// 仅连接层失败才触发 Tailnet 回退；服务端返回了响应说明链路通畅。
@@ -142,6 +146,28 @@ class NetworkClient {
             } on TailnetAuthorizationRequired catch (auth) {
               AppLogger.log('⚠️ Tailnet 需要授权: ${auth.status.authUrl}');
               _showTailnetAuthorization(auth.status.authUrl!);
+            }
+          }
+
+          // 连接层失败（含 Tailnet 重试仍失败）：主/备切换成功后重放本次请求。
+          // Tailnet 重试失败会带着 _tailnetRetryFlag 再次进入 onError，自然落入本分支。
+          if (_isConnectionFailure(error) &&
+              error.requestOptions.extra[_backupRetryFlag] != true) {
+            final pick =
+                await ServerFailoverService.ensureAvailable(force: true);
+            if (pick != null) {
+              final retryOptions = error.requestOptions
+                ..baseUrl = sanitizeBaseUrl(pick.url)
+                ..extra[_backupRetryFlag] = true;
+              // FormData 一经发送即被 finalize，重试必须换用克隆体（Tailnet 重放后同理需再克隆）
+              if (retryOptions.data is FormData) {
+                retryOptions.data = (retryOptions.data as FormData).clone();
+              }
+              try {
+                return handler.resolve(await dio.fetch(retryOptions));
+              } on DioException catch (retryError) {
+                return handler.next(retryError);
+              }
             }
           }
           return handler.next(error);
