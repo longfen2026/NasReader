@@ -29,7 +29,7 @@ jobs:
       - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.0'
+          go-version: '1.26.10'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -49,7 +49,7 @@ jobs:
       - name: Build Tailnet Android library
         working-directory: ./third_party/tailnet_android
         env:
-          GOTOOLCHAIN: go1.26.0+auto
+          GOTOOLCHAIN: go1.26.10+auto
         run: |
           yes | sdkmanager "ndk;28.2.13676358"
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
