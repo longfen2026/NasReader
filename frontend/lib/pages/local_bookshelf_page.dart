@@ -76,6 +76,9 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
   /// 当前分组：true=本地（已缓存），false=云端（有阅读记录但未缓存）。默认本地。
   bool _showLocalGroup = true;
 
+  /// 本地/云端各占一页，支持左右滑动切换
+  late PageController _pageController;
+
   /// 本地分组：已下载缓存到本地的书
   List<BookshelfItem> get _localBooks =>
       _books.where((b) => b.isDownloaded).toList();
@@ -87,6 +90,7 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _showLocalGroup ? 0 : 1);
     WidgetsBinding.instance.addObserver(this);
     FavoriteService.revision.addListener(_refreshFavoriteIds);
     loadLocalBooks();
@@ -96,6 +100,7 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
   void dispose() {
     FavoriteService.revision.removeListener(_refreshFavoriteIds);
     WidgetsBinding.instance.removeObserver(this);
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -743,6 +748,24 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
     }
   }
 
+  /// 切换本地/云端分组：PageView 已挂载时播放滑动动画（状态由 onPageChanged 同步）；
+  /// 未挂载（首次加载中）直接改状态，并重建控制器使初始页与状态一致
+  void _switchGroup() {
+    if (!_pageController.hasClients) {
+      setState(() {
+        _showLocalGroup = !_showLocalGroup;
+        _pageController.dispose();
+        _pageController = PageController(initialPage: _showLocalGroup ? 0 : 1);
+      });
+      return;
+    }
+    _pageController.animateToPage(
+      _showLocalGroup ? 1 : 0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -758,14 +781,11 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
             icon: Icon(
                 _showLocalGroup ? Icons.cloud_outlined : Icons.phone_android),
             tooltip: _showLocalGroup ? '切换到云端' : '切换到本地',
-            onPressed: () => setState(() => _showLocalGroup = !_showLocalGroup),
+            onPressed: _switchGroup,
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: loadLocalBooks,
-        child: _buildBody(),
-      ),
+      body: _buildBody(),
     );
   }
 
@@ -774,86 +794,101 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
       return const Center(child: CircularProgressIndicator());
     }
 
-    final books = _showLocalGroup ? _localBooks : _cloudBooks;
+    // 本地/云端各占一页，左右滑动切换；PageStorageKey 保证切页后恢复各自滚动位置
+    return PageView(
+      controller: _pageController,
+      onPageChanged: (index) => setState(() => _showLocalGroup = index == 0),
+      children: [
+        _buildGroupList(_localBooks, isLocal: true),
+        _buildGroupList(_cloudBooks, isLocal: false),
+      ],
+    );
+  }
 
-    if (books.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
-          Center(
-            child: Text(
-              _showLocalGroup
-                  ? '本地暂无已缓存书籍\n可前往「NAS 书库」下载，或切换到云端'
-                  : '云端暂无未缓存的阅读记录',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, height: 1.5),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return ListView.separated(
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: books.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final book = books[index];
-        final format = BookFormat.fromExtension(book.extension);
-
-        return ListTile(
-          // 48px 的三点按钮内部自带 12px 视觉留白，右侧内边距取 4px 即为 16px
-          contentPadding: const EdgeInsets.only(left: 16, right: 4),
-          leading: BookLeadingIcon(
-            icon: format?.icon ?? Icons.insert_drive_file,
-            iconColor: format?.color ?? Colors.grey,
-            isFavorite: _favoriteIds.contains(book.bookId),
-          ),
-          title: Text(
-            book.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          ),
-          subtitle: Row(
-            children: [
-              Text(
-                '已读 ${(book.progressPercent * 100).toStringAsFixed(1)}%',
-                style: const TextStyle(fontSize: 12, color: Colors.brown),
-              ),
-              if (book.fileSizeBytes > 0) ...[
-                const SizedBox(width: 8),
-                Text(
-                  formatBookSize(book.fileSizeBytes),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+  Widget _buildGroupList(List<BookshelfItem> books, {required bool isLocal}) {
+    // RefreshIndicator 须直接包裹本页列表：通知经过 PageView 会增加 depth，
+    // 若在 PageView 外统一包裹，默认 notificationPredicate 会导致下拉刷新失效
+    return RefreshIndicator(
+      onRefresh: loadLocalBooks,
+      child: books.isEmpty
+          ? ListView(
+              key: PageStorageKey<bool>(isLocal),
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                Center(
+                  child: Text(
+                    isLocal
+                        ? '本地暂无已缓存书籍\n可前往「NAS 书库」下载，或左滑查看云端'
+                        : '云端暂无未缓存的阅读记录\n右滑返回本地书架',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey, height: 1.5),
+                  ),
                 ),
               ],
-              const SizedBox(width: 8),
-              if (!book.isDownloaded)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text('云端记录 · 点击下载',
-                      style: TextStyle(fontSize: 10, color: Colors.grey)),
-                ),
-            ],
+            )
+          : ListView.separated(
+              key: PageStorageKey<bool>(isLocal),
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: books.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) => _buildBookTile(books[index]),
+            ),
+    );
+  }
+
+  Widget _buildBookTile(BookshelfItem book) {
+    final format = BookFormat.fromExtension(book.extension);
+
+    return ListTile(
+      // 48px 的三点按钮内部自带 12px 视觉留白，右侧内边距取 4px 即为 16px
+      contentPadding: const EdgeInsets.only(left: 16, right: 4),
+      leading: BookLeadingIcon(
+        icon: format?.icon ?? Icons.insert_drive_file,
+        iconColor: format?.color ?? Colors.grey,
+        isFavorite: _favoriteIds.contains(book.bookId),
+      ),
+      title: Text(
+        book.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Row(
+        children: [
+          Text(
+            '已读 ${(book.progressPercent * 100).toStringAsFixed(1)}%',
+            style: const TextStyle(fontSize: 12, color: Colors.brown),
           ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!book.isDownloaded)
-                const Icon(Icons.cloud_download_outlined, color: Colors.grey),
-              _buildBookActionMenu(book),
-            ],
-          ),
-          onTap: () => _openOrDownloadBook(book),
-        );
-      },
+          if (book.fileSizeBytes > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              formatBookSize(book.fileSizeBytes),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+          const SizedBox(width: 8),
+          if (!book.isDownloaded)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('云端记录 · 点击下载',
+                  style: TextStyle(fontSize: 10, color: Colors.grey)),
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!book.isDownloaded)
+            const Icon(Icons.cloud_download_outlined, color: Colors.grey),
+          _buildBookActionMenu(book),
+        ],
+      ),
+      onTap: () => _openOrDownloadBook(book),
     );
   }
 }
