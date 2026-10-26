@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "nas_reader",
-      "version": "0.8.12+107",
+      "version": "0.8.13+108",
       "dependencies": [
         "archive",
         "charset",
@@ -18,6 +18,7 @@
         "flutter_pdfview",
         "flutter_secure_storage",
         "kindle_unpack",
+        "local_auth",
         "open_file",
         "package_info_plus",
         "path",
@@ -58,6 +59,17 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "local_auth",
+      "version": "3.0.2",
+      "dependencies": [
+        "flutter",
+        "local_auth_android",
+        "local_auth_darwin",
+        "local_auth_platform_interface",
+        "local_auth_windows"
       ]
     },
     {
@@ -374,6 +386,14 @@
         "stream_channel",
         "string_scanner",
         "term_glyph"
+      ]
+    },
+    {
+      "name": "local_auth_platform_interface",
+      "version": "1.1.0",
+      "dependencies": [
+        "flutter",
+        "plugin_platform_interface"
       ]
     },
     {
@@ -1083,6 +1103,45 @@
         "collection",
         "meta",
         "pub_semver"
+      ]
+    },
+    {
+      "name": "local_auth_windows",
+      "version": "2.0.2",
+      "dependencies": [
+        "flutter",
+        "local_auth_platform_interface",
+        "meta"
+      ]
+    },
+    {
+      "name": "local_auth_darwin",
+      "version": "2.0.5",
+      "dependencies": [
+        "flutter",
+        "intl",
+        "local_auth_platform_interface",
+        "meta"
+      ]
+    },
+    {
+      "name": "intl",
+      "version": "0.20.3",
+      "dependencies": [
+        "clock",
+        "meta",
+        "path"
+      ]
+    },
+    {
+      "name": "local_auth_android",
+      "version": "2.3.0",
+      "dependencies": [
+        "flutter",
+        "flutter_plugin_android_lifecycle",
+        "intl",
+        "local_auth_platform_interface",
+        "meta"
       ]
     }
   ],

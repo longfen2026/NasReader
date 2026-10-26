@@ -230,6 +230,12 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "intl",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/intl-0.20.3",
+      "packageUri": "lib/",
+      "languageVersion": "3.9"
+    },
+    {
       "name": "jni",
       "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/jni-1.0.3",
       "packageUri": "lib/",
@@ -282,6 +288,36 @@
       "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/lints-3.0.0",
       "packageUri": "lib/",
       "languageVersion": "3.0"
+    },
+    {
+      "name": "local_auth",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/local_auth-3.0.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
+    },
+    {
+      "name": "local_auth_android",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/local_auth_android-2.3.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
+      "name": "local_auth_darwin",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/local_auth_darwin-2.0.5",
+      "packageUri": "lib/",
+      "languageVersion": "3.11"
+    },
+    {
+      "name": "local_auth_platform_interface",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/local_auth_platform_interface-1.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
+      "name": "local_auth_windows",
+      "rootUri": "file:///C:/Users/lijil/AppData/Local/Pub/Cache/hosted/pub.dev/local_auth_windows-2.0.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
     },
     {
       "name": "logging",
