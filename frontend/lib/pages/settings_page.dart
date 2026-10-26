@@ -650,6 +650,17 @@ class _AccountCenterPageState extends State<AccountCenterPage>
       NetworkClient.sanitizeBaseUrl(ApiConfig.baseUrl) ==
           NetworkClient.sanitizeBaseUrl(_endpoints.backupUrl);
 
+  /// 当前连接服务器的副标题：地址 + 提示文案，说明此刻请求实际走哪条链路
+  String _connectionSubtitle(String address, {bool viaTailnet = false}) {
+    if (address.isEmpty) return '未配置服务器地址';
+    final hint = viaTailnet
+        ? '当前连接 · 局域网不可达，请求经 Tailnet 中转'
+        : _isUsingBackup
+            ? '当前连接 · 主服务器不可用，已自动切换至备用'
+            : '当前连接 · 数据同步与书籍下载均经此服务器';
+    return '$address\n$hint';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -973,7 +984,7 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                               path == ServerConnectionPath.tailnet;
                           final target = _endpoints.hasTailnetTarget
                               ? _endpoints.tailnetTarget
-                              : '未配置';
+                              : '';
                           return ListTile(
                             leading: Icon(
                               isTailnet
@@ -988,10 +999,9 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                             ),
                             subtitle: Text(
                               isTailnet
-                                  ? target
-                                  : ApiConfig.baseUrl.isNotEmpty
-                                      ? ApiConfig.baseUrl
-                                      : '未配置',
+                                  ? _connectionSubtitle(target,
+                                      viaTailnet: true)
+                                  : _connectionSubtitle(ApiConfig.baseUrl),
                               style: const TextStyle(fontSize: 12),
                             ),
                             trailing: Text(
@@ -1018,9 +1028,7 @@ class _AccountCenterPageState extends State<AccountCenterPage>
                         title: const Text('局域网服务器',
                             style: TextStyle(fontSize: 14)),
                         subtitle: Text(
-                          ApiConfig.baseUrl.isNotEmpty
-                              ? ApiConfig.baseUrl
-                              : '未配置',
+                          _connectionSubtitle(ApiConfig.baseUrl),
                           style: const TextStyle(fontSize: 12),
                         ),
                         trailing: Text(
