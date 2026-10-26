@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:nas_reader/config/api_config.dart';
 import 'package:nas_reader/config/theme_manager.dart';
 import 'package:nas_reader/core/network_client.dart';
+import 'package:nas_reader/services/app_lock_service.dart';
 import 'package:nas_reader/services/server_failover_service.dart';
 import 'package:nas_reader/services/tailnet_prefs.dart';
 import 'package:nas_reader/services/tailnet_transport_service.dart';
+import 'package:nas_reader/widgets/app_lock_gate.dart';
 
 // 引入本地书架与 NAS 文件浏览器页面
 import 'pages/login_page.dart';
@@ -17,6 +19,7 @@ void main() async {
   await ApiConfig.init();
   await ThemeManager.init(); // 👈 初始化主题配置
   await TailnetPrefs.init();
+  await AppLockService.init(); // 初始化应用锁定配置
   // 启动时校验主服务器可用性，不可用则静默切到备用服务器；不阻塞首帧渲染。
   unawaited(ServerFailoverService.ensureAvailable(force: true));
   runApp(const MyApp());
@@ -82,6 +85,10 @@ class _MyAppState extends State<MyApp> {
               home: ApiConfig.isLoggedIn
                   ? MainNavigationContainer(dio: NetworkClient.getDio())
                   : const LoginPage(),
+              // 应用锁定门：开启锁定后，冷启动或后台返回时在最外层覆盖验证页
+              builder: (context, child) {
+                return AppLockGate(child: child);
+              },
             );
           },
         );

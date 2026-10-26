@@ -21,6 +21,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'login_page.dart';
 import 'trash_bin_page.dart';
+import 'app_lock_page.dart';
+import '../services/app_lock_service.dart';
 import '../services/app_logger.dart';
 import '../services/update_service.dart';
 
@@ -590,7 +592,35 @@ class SettingsPageState extends State<SettingsPage>
               ),
             const Divider(),
 
-            // 4. 关于
+            // 4. 应用安全
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text('应用安全',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.grey)),
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: AppLockService.enabledNotifier,
+              builder: (context, lockEnabled, _) {
+                return ListTile(
+                  leading: const Icon(Icons.lock_outline),
+                  title: const Text('应用锁定'),
+                  subtitle: Text(
+                    lockEnabled
+                        ? '已开启 · ${AppLockService.method?.label ?? ''}'
+                        : '打开或返回 App 时需验证身份',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AppLockSettingsPage()),
+                  ),
+                );
+              },
+            ),
+            const Divider(),
+
+            // 5. 关于
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text('系统信息',

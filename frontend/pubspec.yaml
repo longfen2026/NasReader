@@ -44,6 +44,7 @@ dependencies:
   charset: ^2.0.1
   enough_convert: 1.6.0
   cp949_codec: 1.0.2
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:

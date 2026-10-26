@@ -7,7 +7,7 @@ import java.net.NetworkInterface
 import java.util.Collections
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -16,7 +16,7 @@ import org.json.JSONObject
 import tailnetandroid.Service
 import tailnetandroid.Tailnetandroid
 
-class MainActivity: FlutterActivity() {
+class MainActivity: FlutterFragmentActivity() {
     private val tailnetExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val tailnetService: Service by lazy { Tailnetandroid.newService() }
 
