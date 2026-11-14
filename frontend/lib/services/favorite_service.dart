@@ -203,6 +203,42 @@ class FavoriteService {
     revision.value++;
   }
 
+  /// 书籍更新（内容指纹变化）后的收藏迁移：把旧 bookId 名下的收藏迁到新 bookId，
+  /// 并同步更新冗余的文件名与远端路径，最后后台推送到云端。
+  static Future<void> migrateBookId(
+    String oldBookId,
+    String newBookId, {
+    String? newTitle,
+    String? newFileName,
+    String? newRemotePath,
+  }) async {
+    if (oldBookId == newBookId || oldBookId.isEmpty || newBookId.isEmpty) {
+      return;
+    }
+    final map = await _load();
+    final existing = map.remove(oldBookId);
+    if (existing == null) return;
+
+    if (map.containsKey(newBookId)) {
+      // 新键已有收藏记录：以新键为准，丢弃旧键避免互相覆盖
+      AppLogger.log('🔀 收藏已存在于新书籍标识，丢弃旧键: $oldBookId');
+    } else {
+      map[newBookId] = FavoriteBook(
+        bookId: newBookId,
+        title: newTitle ?? existing.title,
+        fileName: newFileName ?? existing.fileName,
+        remotePath: newRemotePath ?? existing.remotePath,
+        addedAt: existing.addedAt,
+        // 时间戳上调，保证推送到云端时按 LWW 覆盖旧记录
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        isDeleted: existing.isDeleted,
+      );
+      AppLogger.log('🔀 已迁移收藏: $oldBookId -> $newBookId');
+    }
+    await _persist(map);
+    _pushInBackground();
+  }
+
   @visibleForTesting
   static void resetCacheForTest() => _cache = null;
 }

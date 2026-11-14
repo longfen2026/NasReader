@@ -70,6 +70,9 @@ func main() {
 
 	handlers.AuthLimiter.StartCleanup(10 * time.Minute)
 
+	// 后台预构建全库文件索引，供阅读记录对账迁移使用（首次进书架即可迁移）
+	handlers.StartLibraryIndexBuild()
+
 	r := gin.Default()
 
 	r.Use(corsMiddleware())
@@ -117,6 +120,9 @@ func main() {
 			syncGroup.POST("/delete", handlers.DeleteBookSyncData)
 			// 5. 从书架移除时仅删除云端阅读进度和书签，保留收藏
 			syncGroup.POST("/remove-reading-data", handlers.RemoveBookReadingData)
+			// 6. 书籍更新后的阅读记录对账迁移（书架加载时调用；歧义候选由用户确认后走 confirm）
+			syncGroup.POST("/reconcile", handlers.ReconcileProgress)
+			syncGroup.POST("/reconcile/confirm", handlers.ConfirmReconcile)
 		}
 
 		// 文件系统相关接口

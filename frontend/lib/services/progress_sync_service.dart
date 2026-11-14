@@ -345,33 +345,61 @@ class ProgressSyncService {
     required String newBookId,
   }) async {
     if (legacyBookId == newBookId) return;
+    await migrateBookRecord(oldBookId: legacyBookId, newBookId: newBookId);
+  }
+
+  /// 通用书籍标识迁移：把旧 bookId 名下的本地记录（进度、书签、书架屏蔽标记）
+  /// 迁移到新 bookId 键上，用于书籍更新（内容指纹变化）后的阅读记录迁移。
+  /// [newFilePath]/[newTitle] 非空时同步更新记录的展示信息（远端路径已随新文件变化）。
+  static Future<void> migrateBookRecord({
+    required String oldBookId,
+    required String newBookId,
+    String? newFilePath,
+    String? newTitle,
+  }) async {
+    if (oldBookId == newBookId || oldBookId.isEmpty || newBookId.isEmpty) {
+      return;
+    }
 
     final prefs = await SharedPreferences.getInstance();
+
+    // 1. 阅读进度 map 的内层键
     final rawMap = prefs.getString(_storageKey);
     if (rawMap != null) {
       final Map<String, dynamic> map = jsonDecode(rawMap);
-      if (map.containsKey(legacyBookId) && !map.containsKey(newBookId)) {
-        final legacy = BookProgress.fromJson(map[legacyBookId]);
+      final legacyRaw = map.remove(oldBookId);
+      if (legacyRaw != null && !map.containsKey(newBookId)) {
+        final legacy = BookProgress.fromJson(legacyRaw);
         map[newBookId] = BookProgress(
           bookId: newBookId,
-          title: legacy.title,
-          filePath: legacy.filePath,
+          title: newTitle ?? legacy.title,
+          filePath: newFilePath ?? legacy.filePath,
           progress: legacy.progress,
           locator: legacy.locator,
           clientUpdatedAt: legacy.clientUpdatedAt,
         ).toJson();
-        map.remove(legacyBookId);
-        await prefs.setString(_storageKey, jsonEncode(map));
-        AppLogger.log('🔀 已迁移旧阅读进度: $legacyBookId -> $newBookId');
+        AppLogger.log('🔀 已迁移阅读进度: $oldBookId -> $newBookId');
       }
+      await prefs.setString(_storageKey, jsonEncode(map));
     }
 
-    final legacyBookmarks = prefs.getString('local_bookmarks_$legacyBookId');
-    if (legacyBookmarks != null &&
-        prefs.getString('local_bookmarks_$newBookId') == null) {
-      await prefs.setString('local_bookmarks_$newBookId', legacyBookmarks);
-      await prefs.remove('local_bookmarks_$legacyBookId');
-      AppLogger.log('🔀 已迁移旧书签: $legacyBookId -> $newBookId');
+    // 2. 本地书签（StringList，与 BookmarkSyncService 的存储类型保持一致）
+    final legacyBookmarks = prefs.getStringList('local_bookmarks_$oldBookId');
+    if (legacyBookmarks != null) {
+      if (prefs.getStringList('local_bookmarks_$newBookId') == null) {
+        await prefs.setStringList(
+            'local_bookmarks_$newBookId', legacyBookmarks);
+        AppLogger.log('🔀 已迁移本地书签: $oldBookId -> $newBookId');
+      }
+      await prefs.remove('local_bookmarks_$oldBookId');
+    }
+
+    // 3. 书架屏蔽标记跟随迁移，避免迁移后旧记录被“重新拉回书架”
+    final removed = prefs.getStringList(_shelfRemovedKey) ?? [];
+    if (removed.contains(oldBookId)) {
+      removed.remove(oldBookId);
+      if (!removed.contains(newBookId)) removed.add(newBookId);
+      await prefs.setStringList(_shelfRemovedKey, removed);
     }
   }
 }

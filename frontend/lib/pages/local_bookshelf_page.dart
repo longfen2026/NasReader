@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 import '../core/book_fingerprint.dart';
 import '../core/book_format.dart';
 import '../core/network_client.dart';
+import '../config/api_config.dart';
+import '../services/book_reconcile_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/favorite_service.dart';
 import '../services/mobi_converter.dart';
@@ -149,6 +151,9 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
       if (widget.dio != null) {
         await ProgressSyncService.syncWithRemote(widget.dio!);
       }
+      // 1.5 书籍更新对账：云端文件被替换后，把孤儿阅读记录迁移到名称一致的新文件。
+      // 失败静默跳过，不阻塞书架加载；返回的歧义候选在书架渲染后弹窗确认。
+      await _runReconcile();
       // 书架是启动首页，在此拉一次账号维度的收藏夹（未登录时内部会直接返回本地）
       await FavoriteService.syncWithServer();
 
@@ -236,6 +241,103 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
     } catch (e) {
       AppLogger.log('❌ 刷新书架异常: $e');
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// 书籍更新对账：自动迁移唯一匹配的孤儿记录，歧义候选弹窗交由用户确认。
+  /// 任何异常都静默吞掉——对账只是书架加载的附加动作，失败不应影响书架展示。
+  Future<void> _runReconcile() async {
+    if (widget.dio == null || !ApiConfig.isLoggedIn) return;
+    try {
+      final result = await BookReconcileService.reconcile(widget.dio);
+      for (final migration in result.migrated) {
+        await BookReconcileService.applyMigration(migration);
+        AppLogger.log(
+          '🔀 已自动迁移阅读记录: ${migration.title} -> ${migration.newFilePath}',
+        );
+      }
+
+      final actionable = <ReconcilePending>[];
+      for (final item in result.pending) {
+        if (!await BookReconcileService.isDismissed(
+            item.oldBookId, item.candidates)) {
+          actionable.add(item);
+        }
+      }
+      if (actionable.isNotEmpty && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showReconcileDialogs(actionable);
+        });
+      }
+    } catch (e) {
+      AppLogger.log('⚠️ 书籍更新对账跳过: $e');
+    }
+  }
+
+  /// 逐本弹窗让用户确认“旧记录 → 新文件”的对应关系；取消视为忽略本次候选组合
+  Future<void> _showReconcileDialogs(List<ReconcilePending> pending) async {
+    for (final item in pending) {
+      if (!mounted) return;
+
+      final chosen = await showDialog<ReconcileCandidate>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('发现疑似书籍更新'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('《${item.title}》的原文件已不在书库中，可能是文件被更新。'),
+                const SizedBox(height: 4),
+                const Text('请选择对应的新文件以迁移阅读记录：'),
+                ...item.candidates.map(
+                  (c) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.menu_book_outlined),
+                    title: Text(c.name),
+                    subtitle: Text(c.path),
+                    onTap: () => Navigator.pop(ctx, c),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('暂不迁移'),
+            ),
+          ],
+        ),
+      );
+
+      if (chosen == null) {
+        await BookReconcileService.rememberDismissed(
+            item.oldBookId, item.candidates);
+        continue;
+      }
+
+      try {
+        final migration = await BookReconcileService.confirm(
+          item.oldBookId,
+          chosen.bookId,
+          widget.dio,
+        );
+        if (migration != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已迁移《${migration.title}》的阅读记录'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          await loadLocalBooks();
+        }
+      } catch (e) {
+        AppLogger.log('⚠️ 确认迁移失败: $e');
+      }
     }
   }
 

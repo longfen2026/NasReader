@@ -42,6 +42,7 @@ func InitDB() {
 		&models.ReadingProgress{},
 		&models.Bookmark{},
 		&models.Favorite{},
+		&models.LibraryFileIndex{},
 	)
 	if err != nil {
 		log.Fatalf("数据库表自动迁移失败: %v", err)
