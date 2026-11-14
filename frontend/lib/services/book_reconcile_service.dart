@@ -1,9 +1,14 @@
 // lib/services/book_reconcile_service.dart
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/book_fingerprint.dart';
 import '../core/network_client.dart';
 import 'app_logger.dart';
 import 'favorite_service.dart';
@@ -18,6 +23,10 @@ class BookReconcileService {
   /// 用户“忽略”歧义候选的记忆（prefs key）：old_book_id -> 候选签名。
   /// 候选集合变化（用户新增了文件）时签名不再匹配，会重新提示。
   static const String _dismissedKey = 'reconcile_dismissed_map';
+
+  /// 已迁移书籍的记录（prefs key）：old_book_id -> {new_book_id, file_name}。
+  /// 用于新版缓存下载成功后定位并清理旧版本地缓存文件。
+  static const String _migratedMapKey = 'reconcile_migrated_map';
 
   /// 未显式传入时复用 NetworkClient 单例，确保 Token 与 401 拦截器生效
   static Dio _getDio([Dio? customDio]) => customDio ?? NetworkClient.getDio();
@@ -53,7 +62,8 @@ class BookReconcileService {
     return migration;
   }
 
-  /// 应用一条已确认的迁移：本地进度/书签/收藏键全部换到新 bookId
+  /// 应用一条已确认的迁移：本地进度/书签/收藏键全部换到新 bookId，
+  /// 并记录迁移映射供新版缓存下载成功后清理旧缓存。
   static Future<void> applyMigration(ReconcileMigration migration) async {
     await ProgressSyncService.migrateBookRecord(
       oldBookId: migration.oldBookId,
@@ -70,6 +80,80 @@ class BookReconcileService {
           : migration.newFilePath.split('/').last,
       newRemotePath: migration.newFilePath,
     );
+    await recordMigrationForCleanup(migration);
+  }
+
+  /// 记录迁移映射（old -> new），等待新版缓存下载后清理旧缓存
+  static Future<void> recordMigrationForCleanup(
+    ReconcileMigration migration,
+  ) async {
+    if (migration.oldBookId.isEmpty ||
+        migration.newBookId.isEmpty ||
+        migration.oldFilePath.isEmpty) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_migratedMapKey);
+    final Map<String, dynamic> map =
+        raw != null && jsonDecode(raw) is Map ? Map.from(jsonDecode(raw)) : {};
+    map[migration.oldBookId] = {
+      'new_book_id': migration.newBookId,
+      'file_name': migration.oldFilePath.split('/').last,
+    };
+    await prefs.setString(_migratedMapKey, jsonEncode(map));
+  }
+
+  /// 新版缓存下载成功后清理对应旧版本的本地缓存文件。
+  /// 旧缓存可能是 `<旧指纹>__<旧文件名>` 新命名，也可能是历史版本的纯文件名命名，均予删除。
+  static Future<void> cleanupOldCacheAfterDownload(String newBookId) async {
+    if (newBookId.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_migratedMapKey);
+    if (raw == null) return;
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return;
+    final Map<String, dynamic> map = Map.from(decoded);
+
+    // 找出所有迁移到 newBookId 的旧记录
+    final oldEntries = <String, String>{}; // oldBookId -> 旧文件名
+    map.forEach((oldId, value) {
+      if (value is Map && value['new_book_id']?.toString() == newBookId) {
+        oldEntries[oldId] = (value['file_name'] ?? '').toString();
+      }
+    });
+    if (oldEntries.isEmpty) return;
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final booksDir = Directory(p.join(appDir.path, 'books'));
+      if (!booksDir.existsSync()) return;
+
+      var removed = 0;
+      for (final entity in booksDir.listSync()) {
+        if (entity is! File) continue;
+        final base = p.basename(entity.path);
+        final cachedBookId = BookCacheNaming.extractBookId(base);
+        final matchesOld = oldEntries.containsKey(cachedBookId) ||
+            oldEntries.containsValue(base);
+        if (!matchesOld) continue;
+        try {
+          await entity.delete();
+          removed++;
+          AppLogger.log('🧹 已清理旧版本地缓存: $base');
+        } catch (e) {
+          AppLogger.log('⚠️ 清理旧版本地缓存失败: $base, $e');
+        }
+      }
+      AppLogger.log('🧹 新版已下载，共清理 $removed 个旧版本地缓存文件');
+    } catch (e) {
+      AppLogger.log('⚠️ 扫描旧版本地缓存失败: $e');
+      return; // 清理失败时保留映射，下次下载后再试
+    }
+
+    // 清理成功后移除对应映射
+    oldEntries.keys.forEach(map.remove);
+    await prefs.setString(_migratedMapKey, jsonEncode(map));
   }
 
   /// 候选集合签名：候选变化时旧签名不再匹配，需重新提示用户
@@ -130,12 +214,14 @@ class ReconcileCandidate {
 class ReconcileMigration {
   final String oldBookId;
   final String newBookId;
+  final String oldFilePath;
   final String newFilePath;
   final String title;
 
   const ReconcileMigration({
     required this.oldBookId,
     required this.newBookId,
+    this.oldFilePath = '',
     required this.newFilePath,
     required this.title,
   });
@@ -144,6 +230,7 @@ class ReconcileMigration {
       ReconcileMigration(
         oldBookId: (json['old_book_id'] ?? '').toString(),
         newBookId: (json['new_book_id'] ?? '').toString(),
+        oldFilePath: (json['old_file_path'] ?? '').toString(),
         newFilePath: (json['new_file_path'] ?? '').toString(),
         title: (json['title'] ?? '').toString(),
       );

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
@@ -705,6 +706,10 @@ class LocalBookshelfPageState extends State<LocalBookshelfPage>
           Navigator.of(context, rootNavigator: true).pop();
         }
         targetFile = File(savePath);
+        // 该书若经历过“书籍更新迁移”，下载新版成功后清理旧版本地缓存
+        unawaited(
+          BookReconcileService.cleanupOldCacheAfterDownload(book.bookId),
+        );
       } catch (e) {
         if (mounted && progressDialogVisible) {
           progressDialogVisible = false;

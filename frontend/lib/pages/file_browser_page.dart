@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../readers/stream_txt_reader_page.dart';
 import '../readers/epub_reader_page.dart';
 import '../readers/pdf_reader_page.dart';
+import '../services/book_reconcile_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/favorite_service.dart';
 import '../services/mobi_converter.dart';
@@ -550,6 +551,11 @@ class FileBrowserPageState extends State<FileBrowserPage> {
       setState(() {
         _cachedFileNames.add(p.basename(localFilePath));
       });
+
+      // 该书若经历过“书籍更新迁移”，下载新版成功后清理旧版本地缓存
+      unawaited(
+        BookReconcileService.cleanupOldCacheAfterDownload(item.syncBookId),
+      );
 
       if (mounted) {
         _openReader(targetFile, item);

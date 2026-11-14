@@ -40,10 +40,11 @@ type ReconcilePending struct {
 
 // ReconcileMigration 已自动完成的迁移
 type ReconcileMigration struct {
-	OldBookID  string `json:"old_book_id"`
-	NewBookID  string `json:"new_book_id"`
+	OldBookID   string `json:"old_book_id"`
+	NewBookID   string `json:"new_book_id"`
+	OldFilePath string `json:"old_file_path,omitempty"` // 旧文件远端路径，供前端清理旧版本地缓存
 	NewFilePath string `json:"new_file_path"`
-	Title      string `json:"title"`
+	Title       string `json:"title"`
 }
 
 // ReconcileProgress 对账入口（打开书架时由前端调用）：
@@ -105,6 +106,7 @@ func ReconcileProgress(c *gin.Context) {
 			migrated = append(migrated, ReconcileMigration{
 				OldBookID:   oldID,
 				NewBookID:   target.BookID,
+				OldFilePath: origin.filePath,
 				NewFilePath: target.Path,
 				Title:       titleFromFileName(target.Name),
 			})
@@ -180,6 +182,7 @@ func ConfirmReconcile(c *gin.Context) {
 		"migration": ReconcileMigration{
 			OldBookID:   req.OldBookID,
 			NewBookID:   req.NewBookID,
+			OldFilePath: orphans[req.OldBookID].filePath,
 			NewFilePath: target.Path,
 			Title:       title,
 		},
